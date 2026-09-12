@@ -1,0 +1,48 @@
+{
+  "latex-workshop.latex.recipe.default": "Build thesis with MiKTeX",
+  "latex-workshop.latex.recipes": [
+    {
+      "name": "Build thesis with MiKTeX",
+      "tools": ["leaf-hierarchy-texify"]
+    },
+    {
+      "name": "Build thesis with latexmk",
+      "tools": ["leaf-hierarchy-latexmk"]
+    }
+  ],
+  "latex-workshop.latex.tools": [
+    {
+      "name": "leaf-hierarchy-texify",
+      "command": "powershell.exe",
+      "cwd": "%DIR%",
+      "args": [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "%DIR%/build.ps1",
+        "-MainFile",
+        "%DOC%"
+      ]
+    },
+    {
+      "name": "leaf-hierarchy-latexmk",
+      "command": "latexmk",
+      "cwd": "%DIR%",
+      "args": [
+        "-cd",
+        "-pdf",
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-synctex=1",
+        "%DOC%"
+      ]
+    }
+  ],
+  "latex-workshop.latex.outDir": "%DIR%",
+  "latex-workshop.latex.clean.method": "glob",
+  "latex-workshop.latex.autoBuild.run": "onSave",
+  "latex-workshop.latex.build.enableMagicComments": true
+}

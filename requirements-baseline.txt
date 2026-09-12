@@ -1,0 +1,2 @@
+# Compatibility entry point for earlier installation instructions.
+-r requirements.txt

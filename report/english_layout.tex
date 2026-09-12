@@ -1,0 +1,39 @@
+% !TeX root = main.tex
+% Local English presentation overrides; upstream TeXiS files remain unchanged.
+\addto\captionsenglish{%
+  \renewcommand{\contentsname}{Contents}%
+  \renewcommand{\listfigurename}{List of Figures}%
+  \renewcommand{\listtablename}{List of Tables}%
+  \renewcommand{\bibname}{References}%
+}
+
+% The upstream cover derives its academic year from the current calendar year.
+\patchcmd{\makeCover}{Curso \thelastyear--\the\year}{Academic year \academicYear}{}
+  {\PackageError{leaf-hierarchy}{Could not set the academic year}{Check the upstream cover template.}}
+\patchcmd{\makeCover}{Página de Título}{Title Page}{}
+  {\PackageError{leaf-hierarchy}{Could not translate the title bookmark}{Check the upstream cover template.}}
+
+% Both cover pages contain each label, so patch both occurrences explicitly.
+\newcommand{\translateCoverLabel}[2]{%
+  \patchcmd{\makeCover}{#1}{#2}{}
+    {\PackageError{leaf-hierarchy}{Could not translate a cover label}{Check the upstream cover template.}}%
+  \patchcmd{\makeCover}{#1}{#2}{}
+    {\PackageError{leaf-hierarchy}{Could not translate the second cover label}{Check the upstream cover template.}}%
+}
+\translateCoverLabel{\bfseries Autor}{\bfseries Author}
+\translateCoverLabel{\bfseries Director}{\bfseries Supervisor}
+\translateCoverLabel{\bfseries Colaborador}{\bfseries Collaborator}
+
+% Omit the collaborator row on both cover pages when its metadata field is empty.
+\ifdefempty{\collaboratorName}{%
+  \patchcmd{\makeCover}
+    {{\Large \bfseries Collaborator}\\
+\textbf{\colaboradorPortadaVal}\\[0.5cm]}
+    {}{}
+    {\PackageError{leaf-hierarchy}{Could not hide the empty collaborator field}{Check the first upstream cover.}}%
+  \patchcmd{\makeCover}
+    {{\Large \bfseries Collaborator}\\
+\textbf{\colaboradorPortadaVal}\\[0.3cm]}
+    {}{}
+    {\PackageError{leaf-hierarchy}{Could not hide the second empty collaborator field}{Check the second upstream cover.}}%
+}{}

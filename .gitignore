@@ -1,0 +1,44 @@
+# Keep one documented directory per dataset; exclude all raw PlantCLEF files.
+/PlantCLEF2015TrainingData/*
+!/PlantCLEF2015TrainingData/README.md
+/PlantCLEF2015TrainingData.zip
+
+# Generated analysis, experiments and model weights.
+/results/
+/resultados_leafscan/
+/resultados_resnet18/
+*.pt
+*.pth
+
+# Local notebook archive, environments, caches and temporary work.
+/archive/
+*.ipynb
+.ipynb_checkpoints/
+.venv/
+venv/
+.baseline_deps/
+.cache/
+__pycache__/
+*.py[cod]
+_work/
+.DS_Store
+Thumbs.db
+
+# LaTeX build products; keep report source and figure assets under version control.
+/report/main.pdf
+/report/build/
+/report/**/*.aux
+/report/**/*.log
+/report/**/*.out
+/report/**/*.toc
+/report/**/*.lof
+/report/**/*.lot
+/report/**/*.bbl
+/report/**/*.blg
+/report/**/*.fls
+/report/**/*.fdb_latexmk
+/report/**/*.synctex.gz
+/report/**/*.idx
+/report/**/*.ind
+/report/**/*.ilg
+/report/**/*.exa

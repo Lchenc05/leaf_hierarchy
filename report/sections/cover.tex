@@ -1,0 +1,18 @@
+% !TeX root = ../main.tex
+% The official template's two title slots contain the English title first, then Spanish.
+\tituloPortada{\thesisTitleEn}
+\tituloPortadaEng{\thesisTitleEs}
+\autorPortada{\authorName}
+\fechaPublicacion{\submissionDate}
+\imagenPortada{figures/ucm_crest}
+\escalaImagenPortada{.2}
+\tipoDocumento{Bachelor's Thesis}
+\institucion{Bachelor's Degree in \degreeName\\[0.2em]
+  Faculty of Computer Science\\[0.2em]Complutense University of Madrid}
+\directorPortada{\supervisorName}
+\colaboradorPortada{\collaboratorName}
+\textoPrimerSubtituloPortada{\textbf{Bachelor's Thesis in \degreeName}\\[0.3em]}
+\ifdefempty{\examSession}
+  {\textoSegundoSubtituloPortada{\mbox{}}}
+  {\textoSegundoSubtituloPortada{\textbf{Submission period: }\examSession}}
+\makeCover

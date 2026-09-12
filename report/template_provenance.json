@@ -1,0 +1,21 @@
+{
+  "source_page": "https://informatica.ucm.es/tfgs-2026-2027",
+  "template_url": "https://informatica.ucm.es/file/plantilla_tfg_latex?ver",
+  "regulations_url": "https://informatica.ucm.es/file/normativa-tfg-actual?ver=",
+  "retrieved_on": "2026-09-12",
+  "archive_sha256": "1f253123e00e418fb0a5c7ad7f649b81f3571e3c442008ade57d1d6364034a1f",
+  "upstream_files": {
+    "TeXiS/TeXiS.bst": "6d00c45ae9c1fe85483ef954715a4bf12d5b3166b3cc18301f3a21a6bb9178ec",
+    "TeXiS/TeXiS.sty": "330503bc47826c99f5c51240166210b264198846f2904ff0734cc0ec41077cc8",
+    "TeXiS/TeXiS_acron.tex": "ce0d6738d213e4d55908d1770d2ff21507c6af1c3ddc6c3ed64c2140925bc149",
+    "TeXiS/TeXiS_bib.tex": "79989c32d1ef32edd387271ed93541da7e3d8592f8933d3d4f8890c8f78c85a8",
+    "TeXiS/TeXiS_cab.tex": "013557a32ce466250537a35545acb483c4a029dbdc8c5059ab1f2779d7d32a6e",
+    "TeXiS/TeXiS_cover.tex": "481a052e243cc5e9c9921390774cd43b0f8461184ba47e93701b5030b66bcb28",
+    "TeXiS/TeXiS_dedic.tex": "3ddc64eaf7c451b3e596b0b45fc926c5d1b68f4012331bead9dd207f12954f2a",
+    "TeXiS/TeXiS_en.bst": "e927c8ae4b03140f96812435d258d6d07dcf38125420f698037412f9aac79fd0",
+    "TeXiS/TeXiS_indice.tex": "2a64311fdf5720db3595cc36ce530ff27e230db9c0c0de08fe85c7bd49d0bc57",
+    "TeXiS/TeXiS_pream.tex": "9e7b78c4f2430040501bb82a225f3346281839f81b377c956bda77fb7d9d0d3e",
+    "TeXiS/TeXiS_toc.tex": "1d8752c8b0cd561183466ae11a8b75da5b60098c8be246108fc966ceb2c7fd98",
+    "figures/ucm_crest.png": "91c04e898ce425e80d53f650492698ee1427496b57a3cce58741bc969a359edd"
+  }
+}

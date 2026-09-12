@@ -1,0 +1,45 @@
+% Main thesis file. See README.md for Windows and latexmk build commands.
+% The official TeXiS package and its licence notices are preserved unchanged.
+\documentclass[12pt,a4paper,twoside]{book}
+\def\release{1}
+\input{metadata}
+\usepackage{TeXiS/TeXiS}
+\usepackage{etoolbox}
+\graphicspath{{figures/}}
+\input{english_layout}
+\hypersetup{pdftitle={\thesisTitleEn},pdfauthor={\authorName},
+  pdfsubject={Bachelor's Thesis}}
+
+\begin{document}
+\selectlanguage{english}
+\frontmatter
+\pagestyle{empty}
+\input{sections/cover}
+\include{sections/abstract_en}
+% The faculty requires a Spanish title, summary and keywords even for an English thesis.
+\begin{otherlanguage}{spanish}
+\include{sections/summary_es}
+\end{otherlanguage}
+\include{sections/contents}
+\mainmatter
+\pagestyle{fancy}
+\restauraCabecera
+\include{sections/introduction_en}
+\include{sections/background}
+\include{sections/methodology}
+\include{sections/results}
+\include{sections/conclusions_en}
+\cleardoublepage
+\chapter*{\bibname}
+\cabeceraEspecial{\bibname}
+\phantomsection
+\addcontentsline{toc}{chapter}{\bibname}
+% To enable BibTeX, remove the empty chapter heading above and uncomment these commands.
+% \bibliographystyle{TeXiS/TeXiS_en}
+% \bibliography{references}
+\cleardoublepage
+\restauraCabecera
+\appendix
+\include{sections/reproducibility}
+\backmatter
+\end{document}
