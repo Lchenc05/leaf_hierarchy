@@ -1,12 +1,11 @@
 # Keep one documented directory per dataset; exclude all raw PlantCLEF files.
 /PlantCLEF2015TrainingData/*
 !/PlantCLEF2015TrainingData/README.md
+!/PlantCLEF2015TrainingData/taxonomy_snapshot.json
 /PlantCLEF2015TrainingData.zip
 
 # Generated analysis, experiments and model weights.
 /results/
-/resultados_leafscan/
-/resultados_resnet18/
 *.pt
 *.pth
 
@@ -20,6 +19,7 @@ venv/
 .cache/
 __pycache__/
 *.py[cod]
+*.egg-info/
 _work/
 .DS_Store
 Thumbs.db

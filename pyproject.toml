@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "leaf-hierarchy"
+version = "0.1.0"
+description = "Hierarchical plant classification, learned representations and explainability for a bachelor thesis."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.10,<2.11",
+    "torchvision>=0.25,<0.26",
+    "numpy>=2.3,<3",
+    "pandas>=2.3,<3",
+    "Pillow>=12,<13",
+    "scipy>=1.16,<2",
+    "scikit-learn>=1.8,<2",
+    "matplotlib>=3.10,<4",
+]
+
+[project.scripts]
+leaf-hierarchy = "leaf_hierarchy.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
