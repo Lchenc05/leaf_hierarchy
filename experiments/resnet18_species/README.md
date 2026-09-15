@@ -1,9 +1,9 @@
 # ResNet18 species baseline
 
-This experiment establishes a species-classification reference for the TFG's later
-family/genus/species models. It uses ResNet18 with one species head, initialized from
-ImageNet. Hierarchical objectives, representation analyses and Grad-CAM are subsequent
-work and are not results of this experiment.
+This experiment establishes a species-classification baseline for comparison with
+subsequent hierarchical family/genus/species models. It uses ResNet18 with one species
+head, initialized from ImageNet. Hierarchical objectives, representation analyses and
+Grad-CAM are subsequent work and are not results of this experiment.
 
 ## Environment
 

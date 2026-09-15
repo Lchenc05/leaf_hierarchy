@@ -10,9 +10,19 @@ examples and installation instructions are in the [project README](../README.md)
 
 ## Run the reference experiment
 
-After [installing the project](../README.md#installation) and obtaining the data
-described in its guide, run these commands from the repository root with the
-environment activated. Set `[data].data_dir` in the experiment's
+After [installing the project](../README.md#installation), download and extract the
+dataset from the repository root using Bash (for example, on Linux or in WSL):
+
+```bash
+wget -c "https://lab.plantnet.org/LifeCLEF/PlantCLEF2015/TrainingPackage/PlantCLEF2015TrainingData.tar.gz"
+mkdir -p PlantCLEF2015TrainingData
+tar -xzf PlantCLEF2015TrainingData.tar.gz -C PlantCLEF2015TrainingData
+```
+
+Check the extracted directory layout against the
+[dataset guide](../PlantCLEF2015TrainingData/README.md#obtain-and-locate-the-data).
+Run the following commands from the repository root with the environment activated.
+Set `[data].data_dir` in the experiment's
 [config.toml](resnet18_species/config.toml) to the directory containing `train/`.
 
 Prepare the data once. Skip this step if
