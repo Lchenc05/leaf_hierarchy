@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import copy
 import math
+import os
 import re
 import tomllib
 from pathlib import Path
@@ -13,6 +14,14 @@ from .models import validate_model_spec
 from .preprocessing import (default_augmentation, default_preprocessing,
                             validate_augmentation, validate_preprocessing)
 from .runtime import DEFAULT_DATA_DIR, DEFAULT_SPLIT_FILE, MODEL_SEED, ROOT
+
+
+def data_dir_from_env() -> Path | None:
+    """Read the optional dataset location relative to the current directory."""
+    value = os.environ.get("LEAF_HIERARCHY_DATA_DIR")
+    if value is None or not value.strip():
+        return None
+    return Path(value).expanduser().resolve()
 
 
 def default_config() -> dict:
@@ -76,29 +85,51 @@ def validate_config(config: dict) -> None:
     validate_augmentation(config["augmentation"])
 
 
+def _read_toml(path: Path | None) -> dict:
+    if path is None:
+        return {}
+    with path.expanduser().resolve().open("rb") as source:
+        return tomllib.load(source)
+
+
+def _resolve_config_path(value: str, key: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{key} must be a nonempty path string.")
+    return str((ROOT / Path(value).expanduser()).resolve())
+
+
+def _resolve_data_paths(data: dict) -> dict:
+    data = {key: _resolve_config_path(value, f"data.{key}") for key, value in data.items()}
+    environment_data_dir = data_dir_from_env()
+    if environment_data_dir is not None:
+        data["data_dir"] = str(environment_data_dir)
+    return data
+
+
+def load_data_config(path: Path | None = None) -> dict:
+    """Read only [data] for preparation, independent of model and training settings."""
+    config = {"data": default_config()["data"]}
+    _merge(config, {"data": _read_toml(path).get("data", {})})
+    return _resolve_data_paths(config["data"])
+
+
 def load_config(path: Path | None = None) -> dict:
-    """Read TOML; file paths in configuration always refer to the repository root."""
+    """Read repository-relative TOML paths, then apply the dataset environment override."""
     config = default_config()
-    if path is not None:
-        path = path.expanduser().resolve()
-        with path.open("rb") as source:
-            values = tomllib.load(source)
-        _merge(config, values)
+    _merge(config, _read_toml(path))
     validate_config(config)
-    for section, key in (("data", "data_dir"), ("data", "split_file"), ("output", "run_root")):
-        location = Path(config[section][key]).expanduser()
-        config[section][key] = str((ROOT / location).resolve() if not location.is_absolute() else location.resolve())
+    config["data"] = _resolve_data_paths(config["data"])
+    config["output"]["run_root"] = _resolve_config_path(config["output"]["run_root"], "output.run_root")
     return config
 
 
 def apply_overrides(config: dict, args: argparse.Namespace) -> dict:
-    """Only explicit CLI arguments override TOML; CLI paths use the current directory."""
+    """Explicit CLI arguments override TOML and environment; CLI paths use the current directory."""
     config = copy.deepcopy(config)
     options = {
         "data_dir": ("data", "data_dir"), "split_file": ("data", "split_file"),
         "epochs": ("training", "epochs"), "batch_size": ("training", "batch_size"),
-        "seed": ("training", "seed"), "lr": ("training", "lr"),
-        "weight_decay": ("training", "weight_decay"), "weights": ("model", "weights"),
+        "seed": ("training", "seed"), "weights": ("model", "weights"),
         "device": ("runtime", "device"), "num_threads": ("runtime", "num_threads"),
     }
     for option, (section, key) in options.items():
@@ -109,11 +140,11 @@ def apply_overrides(config: dict, args: argparse.Namespace) -> dict:
     return config
 
 
-def add_common_arguments(parser: argparse.ArgumentParser, *, data: bool = True) -> None:
+def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", type=Path, help="Experiment TOML; explicit flags override its values.")
-    if data:
-        parser.add_argument("--data-dir", type=Path, default=None)
-        parser.add_argument("--split-file", type=Path, default=None)
-        parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--data-dir", type=Path, default=None,
+                        help="Dataset directory; overrides [data].data_dir and any environment setting.")
+    parser.add_argument("--split-file", type=Path, default=None)
+    parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default=None)
     parser.add_argument("--num-threads", type=int, default=None)

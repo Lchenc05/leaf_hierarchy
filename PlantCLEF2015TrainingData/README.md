@@ -6,12 +6,13 @@ a shared manifest that model experiments can reuse.
 
 ## Obtain and locate the data
 
-Download the dataset archive shared for this project from
-[Google Drive](https://drive.google.com/file/d/1SEEs5yGukc78jZ_hMylXVCYsC8O5YzDg/view?usp=drive_link).
-If access requires signing in, use an authorized account. The
-[official PlantCLEF2015 training package](https://lab.plantnet.org/LifeCLEF/PlantCLEF2015/TrainingPackage/)
-is an alternative source. Allow space for the approximately 16 GB dataset archive,
-its extracted files, dependencies and model checkpoints.
+Download the dataset archive from the
+[official PlantCLEF2015 training package](https://lab.plantnet.org/LifeCLEF/PlantCLEF2015/TrainingPackage/).
+The project copy on
+[Google Drive](https://drive.google.com/file/d/1SEEs5yGukc78jZ_hMylXVCYsC8O5YzDg/view?usp=drive_link)
+is an alternative source; if access requires signing in, use an authorized account.
+Allow space for the approximately 16 GB dataset archive, its extracted files,
+dependencies and model checkpoints.
 
 Extract the original JPG/XML pairs into `train/`:
 
@@ -41,25 +42,54 @@ Raw data and downloaded archives are ignored by Git. The guide and frozen botani
 snapshot are tracked. Additional datasets should have their own documentation and
 raw-data ignore rules.
 
-Existing data can stay outside the repository. Supply the directory containing
-`train/` with `--data-dir`, using the same location for preparation, training and
-evaluation:
+### Configure the dataset location
 
-```text
-leaf-hierarchy prepare --data-dir "D:/datasets/PlantCLEF2015TrainingData"
+The extracted data can stay on another disk or outside the repository. Set the
+directory containing `train/` in the existing `[data]` section of
+[`experiments/resnet18_species/config.toml`](../experiments/resnet18_species/config.toml):
+
+```toml
+[data]
+data_dir = "/opt/datasets/PlantCLEF2015TrainingData"
+split_file = "results/data/plantclef2015/v1/split_manifest.csv"
 ```
 
+On Windows, use a path such as `"D:/datasets/PlantCLEF2015TrainingData"`.
+Use that configuration for preparation and training, then evaluate the saved
+checkpoint (replace `CHECKPOINT` with the path printed by training):
+
+```text
+leaf-hierarchy prepare --config experiments/resnet18_species/config.toml
+leaf-hierarchy train --config experiments/resnet18_species/config.toml
+leaf-hierarchy evaluate --checkpoint CHECKPOINT
+```
+
+Evaluation reuses the data directory and manifest recorded in the checkpoint.
+If you change the configured location later, also pass `--config` to evaluation.
+
+Relative TOML paths start at the repository root. Keep the default `data_dir` value
+when extracting the data inside the repository. See [advanced path options](#advanced-path-options)
+for one-command overrides and a shared location across experiments.
+
 Manifest image paths retain the canonical `PlantCLEF2015TrainingData/train/...`
-prefix. The loader resolves it against `--data-dir`; moving the physical dataset
-does not change group identifiers. Do not edit those internal paths to relocate data.
+prefix. The loader resolves it against the configured data directory; moving the
+physical dataset does not change group identifiers. Do not edit those internal
+paths to relocate data.
+The guide and frozen `taxonomy_snapshot.json` stay in the repository; they do not
+need to be copied alongside an external dataset.
 
 ## Prepare the dataset
 
 After [installing the project](../README.md#installation), run from the repository root:
 
 ```text
-leaf-hierarchy prepare
+leaf-hierarchy prepare --config experiments/resnet18_species/config.toml
 ```
+
+Preparation reads and validates only `[data]` from this file. `data_dir` locates the
+images; `split_file` sets the manifest path and the directory for all preparation
+outputs. The model and training settings do not affect preparation.
+You can omit `--config` to use the default data and output locations.
 
 The preparation workflow reads and audits XML metadata, selects tree-species
 LeafScan images, checks image decoding, identifies observations and duplicate
@@ -82,7 +112,7 @@ missing observation identifiers or conflicting labels are excluded. These are th
 initial comparison protocol's choices, rather than requirements imposed by the
 PlantCLEF2015 dataset itself.
 
-Outputs default to `results/data/plantclef2015/v1/`:
+With the reference configuration, outputs go to `results/data/plantclef2015/v1/`:
 
 | Artifact | Contents |
 | --- | --- |
@@ -110,17 +140,61 @@ versions under `results/data/plantclef2015/`. Use the manifest associated with a
 saved checkpoint when reproducing its evaluation.
 
 Preparation publishes its outputs after completing its checks and refuses to
-overwrite an existing output directory. Preserve prepared versions and select a new
-directory when running again:
+overwrite an existing output directory. Reuse an existing manifest for additional
+training runs. To prepare a new version, change `[data].split_file` to a path in a
+new directory, for example `results/data/plantclef2015/v2/split_manifest.csv`, then
+run `prepare --config` again. Training with the same TOML will read that version.
+Inspect failures before proceeding; do not disable the split or source-evidence
+checks. `leaf-hierarchy prepare --help` also documents `--workers` and
+`--taxonomy-file` for an explicitly selected source snapshot.
+
+## Advanced path options
+
+### Override a location for one command
+
+Use `--data-dir` to override the configured raw dataset location:
 
 ```text
-leaf-hierarchy prepare --output-dir results/data/plantclef2015/custom --workers 8
+leaf-hierarchy prepare --config experiments/resnet18_species/config.toml --data-dir "D:/datasets/PlantCLEF2015TrainingData"
 ```
 
-Pass `--split-file results/data/plantclef2015/custom/split_manifest.csv` to both
-training and evaluation when using that version. Inspect failures before proceeding;
-do not disable the split or source-evidence checks. `leaf-hierarchy prepare --help`
-also documents `--taxonomy-file` for an explicitly selected source snapshot.
+`--output-dir` overrides the directory for preparation outputs while preserving
+the manifest filename from `[data].split_file`. For example, if `split_file` is
+`results/data/plantclef2015/v2/records.csv`, this command writes
+`results/data/plantclef2015/custom/records.csv` and its supporting files:
+
+```text
+leaf-hierarchy prepare --config experiments/resnet18_species/config.toml --output-dir results/data/plantclef2015/custom
+```
+
+Without a configuration, the manifest filename is `split_manifest.csv`. After an
+output-directory override, update `[data].split_file` before training or supply
+the new manifest path with `train --split-file`. Evaluation reuses the paths saved
+by training; `evaluate --config` reads an updated TOML, and `--split-file` overrides
+the configured or recorded manifest for one command.
+
+### Share a dataset location across experiments
+
+Set `LEAF_HIERARCHY_DATA_DIR` once for commands in the current terminal:
+
+```bash
+export LEAF_HIERARCHY_DATA_DIR=/opt/datasets/PlantCLEF2015TrainingData
+```
+
+```powershell
+$env:LEAF_HIERARCHY_DATA_DIR = "D:/datasets/PlantCLEF2015TrainingData"
+```
+
+The variable applies to `prepare`, `train` and `evaluate`, including evaluation of
+a checkpoint saved on another machine. Add it to your shell profile to reuse the
+setting in future terminals. Prediction takes the image's actual path with `--image`.
+
+The priority is `--data-dir` > `LEAF_HIERARCHY_DATA_DIR` > `[data].data_dir` >
+the repository's `PlantCLEF2015TrainingData/` directory. Evaluation without
+`--config` uses the checkpoint's saved path before the repository default.
+Relative environment and command paths start at the current directory. All path
+sources support `~` for the home directory. Empty or whitespace-only environment
+values are ignored.
 
 ## Taxonomic labels
 
@@ -153,7 +227,7 @@ historical split counts, measurements and limitations, including instructions fo
 
 | Problem | Action |
 | --- | --- |
-| Missing images or XML | Check the extracted `train/` directory and the supplied `--data-dir`. |
-| Output directory already exists | Reuse its manifest or select a new `--output-dir`. |
+| Missing images or XML | Check the extracted `train/` directory and the data location in `--config`, `LEAF_HIERARCHY_DATA_DIR` or `--data-dir`. |
+| Output directory already exists | Reuse its manifest or set `[data].split_file` to a path in a new directory. |
 | Botanical snapshot check fails | Check the data edition and snapshot integrity; review changed species labels against the recorded sources. |
 | Counts differ from the reference | Inspect the dataset inventory and exclusions before changing the selection or files. |

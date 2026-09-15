@@ -2,7 +2,9 @@
 experiment = "resnet18_species"
 
 [data]
+# Set an absolute path here to keep the dataset outside the repository.
 data_dir = "PlantCLEF2015TrainingData"
+# Preparation writes this manifest and its supporting files in the same directory.
 split_file = "results/data/plantclef2015/v1/split_manifest.csv"
 
 [model]
@@ -14,6 +16,7 @@ weights = "imagenet"
 epochs = 5
 batch_size = 16
 seed = 20260910
+# Set optimizer parameters here; they have no command-line overrides.
 lr = 0.0001
 weight_decay = 0.0001
 

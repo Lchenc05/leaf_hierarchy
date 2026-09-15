@@ -1,4 +1,4 @@
-"""Predict each configured classification task using checkpoint preprocessing."""
+"""Predict an image using the model and preprocessing saved in a checkpoint."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 
 from .checkpoints import load_checkpoint
-from .config import add_common_arguments, apply_overrides, load_config
 from .preprocessing import build_transform
 from .runtime import configure_runtime, select_device
 
@@ -17,21 +16,22 @@ from PIL import Image, ImageOps
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    add_common_arguments(parser, data=False)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--image", type=Path, required=True)
+    parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto",
+                        help="auto uses CUDA when available, otherwise CPU (default: auto).")
+    parser.add_argument("--num-threads", type=int, default=6, help="CPU threads (default: 6).")
     parser.add_argument("--json", action="store_true", help="Print a JSON object instead of plain text.")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    config = apply_overrides(load_config(args.config), args)
     image_path = args.image.expanduser().resolve()
     if not image_path.is_file():
         raise FileNotFoundError(f"Image not found: {image_path}")
-    configure_runtime(num_threads=config["runtime"]["num_threads"])
-    device = select_device(config["runtime"]["device"])
+    configure_runtime(num_threads=args.num_threads)
+    device = select_device(args.device)
     model, checkpoint = load_checkpoint(args.checkpoint.expanduser().resolve(), device)
     tasks = checkpoint["model_spec"]["tasks"]
     with Image.open(image_path) as image:

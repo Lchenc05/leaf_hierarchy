@@ -2,7 +2,7 @@
 
 Each experiment has a directory containing its research question, configuration,
 execution instructions, evaluation protocol and measured results. Shared command
-templates and installation instructions are in the [project README](../README.md).
+examples and installation instructions are in the [project README](../README.md).
 
 | Experiment | Purpose | Data | Configuration |
 | --- | --- | --- | --- |
@@ -12,16 +12,19 @@ templates and installation instructions are in the [project README](../README.md
 
 After [installing the project](../README.md#installation) and obtaining the data
 described in its guide, run these commands from the repository root with the
-environment activated.
+environment activated. Set `[data].data_dir` in the experiment's
+[config.toml](resnet18_species/config.toml) to the directory containing `train/`.
 
 Prepare the data once. Skip this step if
 `results/data/plantclef2015/v1/split_manifest.csv` already exists:
 
 ```text
-leaf-hierarchy prepare
+leaf-hierarchy prepare --config experiments/resnet18_species/config.toml
 ```
 
-Preparation writes that manifest and requires a new output directory.
+Preparation uses `[data].split_file` for the manifest path and writes its supporting
+files in the same directory, which must not already exist. It reads only `[data]`
+from the configuration.
 
 Train the five-epoch reference configuration:
 
@@ -45,11 +48,11 @@ a confusion matrix and per-image predictions in that run's `test/` directory.
 Predict the species of one image:
 
 ```text
-leaf-hierarchy predict --checkpoint results/runs/resnet18_species/RUN_ID/best.pt --image PlantCLEF2015TrainingData/train/100373.jpg
+leaf-hierarchy predict --checkpoint results/runs/resnet18_species/RUN_ID/best.pt --image IMAGE
 ```
 
-Prediction prints a species name and a softmax score. Replace the path after
-`--image` to try another image; add `--json` for structured output. A single
+Prediction prints a species name and a softmax score. Replace `IMAGE` with the
+actual image path; add `--json` for structured output. A single
 prediction checks inference; use test evaluation to measure model performance.
 
 ## Check the saved historical model

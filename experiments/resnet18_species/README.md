@@ -68,10 +68,11 @@ relative to the repository root; explicit command-line paths are relative to the
 terminal's current directory. Command-line values override the corresponding
 configuration values. Unknown configuration keys are rejected.
 
-For example:
+Set the learning rate and weight decay in `[training]` using `lr` and `weight_decay`.
+For a quick trial, override the duration, batch size or device on the command line:
 
 ```text
-leaf-hierarchy train --config experiments/resnet18_species/config.toml --epochs 5 --batch-size 16 --device cpu
+leaf-hierarchy train --config experiments/resnet18_species/config.toml --epochs 1 --batch-size 8 --device cpu
 ```
 
 ImageNet weights download on first use unless cached. Set `TORCH_HOME` to use an
@@ -107,12 +108,29 @@ Evaluation uses the test split and saves these files in the run's `test/` direct
 | `test_predictions.csv` | Predictions associated with the input records |
 
 Use the same manifest for training and evaluation. For a custom data location and
-prepared dataset:
+prepared dataset, edit the existing `[data]` section of `config.toml`:
+
+```toml
+[data]
+data_dir = "/opt/datasets/PlantCLEF2015TrainingData"
+split_file = "results/data/plantclef2015/custom/split_manifest.csv"
+```
+
+On Windows, use a path such as `"D:/datasets/PlantCLEF2015TrainingData"`.
+Prepare this version once, then train and evaluate:
 
 ```text
-leaf-hierarchy train --config experiments/resnet18_species/config.toml --data-dir "D:/datasets/PlantCLEF2015TrainingData" --split-file results/data/plantclef2015/custom/split_manifest.csv
-leaf-hierarchy evaluate --checkpoint results/runs/resnet18_species/RUN_ID/best.pt --data-dir "D:/datasets/PlantCLEF2015TrainingData" --split-file results/data/plantclef2015/custom/split_manifest.csv
+leaf-hierarchy prepare --config experiments/resnet18_species/config.toml
+leaf-hierarchy train --config experiments/resnet18_species/config.toml
+leaf-hierarchy evaluate --checkpoint results/runs/resnet18_species/RUN_ID/best.pt
 ```
+
+Preparation reads only `[data]`, writes the manifest at `split_file` and places its
+supporting files in the same directory. Skip it if this version already exists.
+Evaluation reuses the checkpoint's recorded paths. To read later configuration
+changes, pass `--config experiments/resnet18_species/config.toml` to evaluation.
+For one-command overrides and a shared location across experiments, see the
+[advanced dataset options](../../PlantCLEF2015TrainingData/README.md#advanced-path-options).
 
 Keep all active manifest records and their images available, including train and
 validation, for consistency checks. Checkpoints with a saved partition fingerprint
@@ -131,11 +149,14 @@ with the directory name printed by training, or use the full printed checkpoint
 path after `--checkpoint`:
 
 ```text
-leaf-hierarchy predict --checkpoint results/runs/resnet18_species/RUN_ID/best.pt --image PlantCLEF2015TrainingData/train/100373.jpg
+leaf-hierarchy predict --checkpoint results/runs/resnet18_species/RUN_ID/best.pt --image IMAGE
 ```
 
-Replace the path after `--image` to try another image. Prediction needs only the
-image, checkpoint and installed package. It returns the
+Replace `IMAGE` with the actual image path. Prediction needs only the
+image, checkpoint and installed package; it does not accept an experiment configuration.
+The checkpoint supplies the model and preprocessing. Prediction uses `--device auto`
+and six CPU threads by default; override these with `--device` and `--num-threads`.
+It returns the
 predicted species and a softmax score; add `--json` for structured output. The score
 is not a calibrated probability of correctness, and predictions are restricted to
 the species learned during training.
@@ -171,8 +192,9 @@ The species matches the image's XML label. This example checks inference; use th
 test metrics to assess overall performance. These outputs belong to the historical
 checkpoint and are not expected results for every new training run.
 
-For images stored elsewhere, supply `--data-dir` to evaluation and the actual image
-path to prediction. These commands leave the original manifests and checkpoints
+For images stored elsewhere, supply `--data-dir`
+to evaluation, and supply the actual image path to prediction.
+These commands leave the original manifests and checkpoints
 in place. To train a new model using the historical partition, run:
 
 ```text

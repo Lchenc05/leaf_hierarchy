@@ -31,6 +31,7 @@ import pandas as pd
 from PIL import Image, ImageOps
 from scipy.fft import dctn
 
+from leaf_hierarchy.config import load_data_config
 from leaf_hierarchy.runtime import ROOT
 from .schema import english_artifact_frame
 from .manifest import MANIFEST_COLUMNS, legacy_split_fingerprint, split_fingerprint
@@ -66,7 +67,10 @@ def resolve_image_path(image_path: str, data_dir: Path) -> Path:
 def validate_paths(data_dir: Path, output_dir: Path, taxonomy_file: Path) -> None:
     """Fail before writing if inputs are unavailable or outputs overlap them."""
     if not data_dir.is_dir():
-        raise FileNotFoundError(f"Dataset directory does not exist: {data_dir}. Use --data-dir to point to PlantCLEF2015TrainingData.")
+        raise FileNotFoundError(
+            f"Dataset directory does not exist: {data_dir}. Set [data].data_dir in --config, "
+            "LEAF_HIERARCHY_DATA_DIR or --data-dir to point to PlantCLEF2015TrainingData."
+        )
     if not taxonomy_file.is_file():
         raise FileNotFoundError(f"Botanical source snapshot does not exist: {taxonomy_file}")
     if output_dir.is_relative_to(data_dir) or data_dir.is_relative_to(output_dir):
@@ -797,11 +801,14 @@ def build_split_proposal(inventory, selected, by_species, exclusions, data_dir, 
 
 
 def run_analysis(data_dir=ROOT / DATASET_PREFIX, output_dir=ROOT / "results" / "data" / "plantclef2015" / "v1",
-                 taxonomy_file=ROOT / DATASET_PREFIX / "taxonomy_snapshot.json", workers=8):
+                 taxonomy_file=ROOT / DATASET_PREFIX / "taxonomy_snapshot.json", workers=8,
+                 *, manifest_name="split_manifest.csv"):
     """Run the complete analysis and return the final split manifest DataFrame."""
     data_dir = Path(data_dir).expanduser().resolve()
     output_dir = Path(output_dir).expanduser().resolve()
     taxonomy_file = Path(taxonomy_file).expanduser().resolve()
+    if not manifest_name or Path(manifest_name).name != manifest_name or manifest_name in {".", ".."}:
+        raise ValueError("The split manifest must have a filename within the output directory.")
     if workers < 1:
         raise ValueError("--workers must be at least 1.")
     validate_paths(data_dir, output_dir, taxonomy_file)
@@ -811,6 +818,7 @@ def run_analysis(data_dir=ROOT / DATASET_PREFIX, output_dir=ROOT / "results" / "
     random.seed(SEED)
     np.random.seed(SEED)
     config = build_config(workers, data_dir, taxonomy_file)
+    config["manifest_filename"] = manifest_name
     # Each dataset version is written once and published only after all checks.
     # A failed preparation leaves no apparently complete output directory.
     output_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -838,6 +846,11 @@ def run_analysis(data_dir=ROOT / DATASET_PREFIX, output_dir=ROOT / "results" / "
                   "active_split_records_sha256": split_fingerprint(active),
                   "legacy_active_split_records_sha256": legacy_split_fingerprint(active)}
         (staging_dir / "manifest_schema.json").write_text(json.dumps(schema, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if manifest_name != "split_manifest.csv":
+            target_manifest = staging_dir / manifest_name
+            if target_manifest.exists():
+                raise ValueError(f"The configured split filename conflicts with another preparation artifact: {manifest_name}")
+            (staging_dir / "split_manifest.csv").rename(target_manifest)
         if output_dir.exists():
             raise FileExistsError(f"Output directory already exists: {output_dir}. Choose a new --output-dir.")
         staging_dir.rename(output_dir)
@@ -853,10 +866,14 @@ def run_analysis(data_dir=ROOT / DATASET_PREFIX, output_dir=ROOT / "results" / "
 
 def build_parser():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-dir", type=Path, default=ROOT / DATASET_PREFIX,
-                        help="Extracted PlantCLEF2015TrainingData directory (default: in the project root).")
-    parser.add_argument("--output-dir", type=Path, default=ROOT / "results" / "data" / "plantclef2015" / "v1",
-                        help="Analysis output directory (default: results/data/plantclef2015/v1).")
+    parser.add_argument("--config", type=Path,
+                        help="Read [data] from the experiment TOML: dataset location and output split_file.")
+    parser.add_argument("--data-dir", type=Path, default=None,
+                        help="Extracted dataset directory; overrides [data].data_dir and any environment setting "
+                             "(default: PlantCLEF2015TrainingData in the project root).")
+    parser.add_argument("--output-dir", type=Path, default=None,
+                        help="Override the directory of [data].split_file, keeping its filename "
+                             "(default without config: results/data/plantclef2015/v1).")
     parser.add_argument("--taxonomy-file", type=Path, default=ROOT / DATASET_PREFIX / "taxonomy_snapshot.json",
                         help="Frozen botanical decisions and source extracts.")
     parser.add_argument("--workers", type=int, default=8, help="Concurrent image readers (default: 8).")
@@ -867,7 +884,12 @@ def main(argv=None):
     parser = build_parser()
     arguments = parser.parse_args(argv)
     try:
-        run_analysis(arguments.data_dir, arguments.output_dir, arguments.taxonomy_file, arguments.workers)
+        data = load_data_config(arguments.config)
+        data_dir = arguments.data_dir if arguments.data_dir is not None else Path(data["data_dir"])
+        split_file = Path(data["split_file"])
+        output_dir = arguments.output_dir if arguments.output_dir is not None else split_file.parent
+        run_analysis(data_dir.expanduser().resolve(), output_dir,
+                     arguments.taxonomy_file, arguments.workers, manifest_name=split_file.name)
     except (OSError, ValueError, AssertionError) as error:
         parser.exit(2, f"Analysis failed: {error}\n")
     return 0

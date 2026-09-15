@@ -1,9 +1,9 @@
 # leaf_hierarchy
 
-Research code for an undergraduate thesis (TFG) on hierarchical plant classification
-from leaf images. The thesis investigates the use of family, genus and species
-relationships in classification and multitask learning, the taxonomic information
-captured by learned representations, and the visual evidence behind model predictions.
+Research code for hierarchical plant classification from leaf images. The project
+investigates the use of family, genus and species relationships in classification
+and multitask learning, the taxonomic information captured by learned
+representations, and the visual evidence behind model predictions.
 
 The repository organizes this work as reproducible experiments. Each experiment
 documents its research question, data, configuration, evaluation protocol and results.
@@ -32,7 +32,11 @@ The [thesis guide](report/README.md) covers writing and compiling the report.
 
 ## Installation
 
-Use Git and 64-bit Python 3.11 or later. From a terminal:
+Use Git and Python 3.11 or later. For the pip installation below, use 64-bit Python:
+the published [PyTorch 2.10 packages](https://pypi.org/project/torch/2.10.0/#files)
+are available only for 64-bit platforms.
+
+From a terminal:
 
 ```text
 git clone https://github.com/Lchenc05/leaf_hierarchy.git
@@ -66,34 +70,65 @@ specific dependency or hardware requirements.
 
 ## Running experiments
 
-Choose an experiment from the [catalog](experiments/README.md) and follow its dataset
-guide to prepare the required data. Preparation produces a reusable manifest of
-images, labels, groups and partition assignments. The experiment configuration
-identifies that manifest and specifies the model and execution settings.
+Start with the [ResNet18 species experiment](experiments/resnet18_species/README.md).
+Obtain the images using its [dataset guide](PlantCLEF2015TrainingData/README.md), then
+set the directory containing `train/` in the existing `[data]` section of
+[`experiments/resnet18_species/config.toml`](experiments/resnet18_species/config.toml):
 
-Run the classification pipeline from the repository root using the following command
-templates. Replace `EXPERIMENT` with the chosen experiment directory, `CHECKPOINT`
-with the saved model path printed by training, and `IMAGE` with an image path:
+```toml
+[data]
+data_dir = "/opt/datasets/PlantCLEF2015TrainingData"
+split_file = "results/data/plantclef2015/v1/split_manifest.csv"
+```
+
+On Windows, use a path such as `"D:/datasets/PlantCLEF2015TrainingData"`.
+Keep the default `data_dir` if the dataset is inside the repository. TOML paths are
+relative to the repository root unless absolute.
+
+Run from the repository root with the environment activated. Prepare the data once;
+skip this command when the configured manifest already exists:
 
 ```text
-leaf-hierarchy train --config experiments/EXPERIMENT/config.toml
+leaf-hierarchy prepare --config experiments/resnet18_species/config.toml
+```
+
+Preparation reads only `[data]` and writes the manifest at `split_file`, with its
+supporting files in the same directory. Images stay in their original location.
+
+Train using that experiment configuration:
+
+```text
+leaf-hierarchy train --config experiments/resnet18_species/config.toml
+```
+
+Then evaluate the saved model and predict one image. Replace `CHECKPOINT` with the
+path to `best.pt` printed by training and `IMAGE` with your image path:
+
+```text
 leaf-hierarchy evaluate --checkpoint CHECKPOINT
 leaf-hierarchy predict --checkpoint CHECKPOINT --image IMAGE
 ```
 
+Evaluation restores the dataset paths saved in the checkpoint. Both evaluation and
+prediction restore the model and image preprocessing. Prediction needs no experiment
+configuration. The [generated results](#generated-results) section explains the outputs.
+The [catalog](experiments/README.md) lists the available experiments.
+
+### Advanced options
+
+Keep experiment settings in the TOML file, including `[training].lr` and
+`[training].weight_decay`. For a quick trial, training accepts overrides such as
+`--epochs 1`, `--batch-size 8` and `--device cpu`.
+
+Use `--data-dir` to override the dataset location for one command. For a shared
+location across experiments and moving an existing checkpoint's dataset, see the
+[advanced dataset options](PlantCLEF2015TrainingData/README.md#advanced-path-options).
+Use `leaf-hierarchy --help` to list commands and `leaf-hierarchy COMMAND --help`
+to inspect a stage's options.
+
 You can also use `python -m leaf_hierarchy` in place of `leaf-hierarchy`. On Windows,
 use `.\.venv\Scripts\python.exe -m leaf_hierarchy` to run with the project's
 environment without activating it first.
-
-The [generated results](#generated-results) section below explains what each command
-saves and where. Evaluation and prediction restore the model specification and
-preprocessing from the checkpoint.
-
-Data locations and manifest paths can be set in the configuration or supplied through
-`--data-dir` and `--split-file`. Use the same prepared records for training and
-evaluation. Each experiment guide provides complete commands with concrete paths.
-Use `leaf-hierarchy --help` to list commands and `leaf-hierarchy COMMAND --help`
-to inspect a stage's options.
 
 ## Generated results
 
@@ -133,7 +168,7 @@ checkpoint path.
    `results/data/plantclef2015/v1/`. The manifest records image paths, labels, groups,
    train/validation/test assignments and exclusions. The other files record taxonomy,
    preparation settings, inventories, species counts, duplicate checks and a
-   distribution plot. Images stay in `PlantCLEF2015TrainingData/`; preparation does
+   distribution plot. Images stay in the configured dataset directory; preparation does
    not copy them. The [dataset guide](PlantCLEF2015TrainingData/README.md#prepare-the-dataset)
    lists the preparation outputs.
 

@@ -23,7 +23,10 @@ import torchvision
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="Set learning rate and weight decay in the TOML [training] table (lr and weight_decay).",
+    )
     add_common_arguments(parser)
     parser.add_argument("--output-dir", type=Path, default=None,
                         help="Parent for a timestamped run; default: configured run_root/experiment.")
@@ -31,8 +34,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--weights", choices=("imagenet", "none"), default=None,
                         help="none permits an offline smoke test and changes the experiment.")
     parser.add_argument("--seed", type=int, default=None)
-    parser.add_argument("--lr", type=float, default=None)
-    parser.add_argument("--weight-decay", type=float, default=None)
     return parser.parse_args(argv)
 
 

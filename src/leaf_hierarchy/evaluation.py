@@ -7,7 +7,7 @@ import hashlib
 from pathlib import Path
 
 from .checkpoints import check_split_identity, load_checkpoint
-from .config import add_common_arguments, apply_overrides, load_config
+from .config import add_common_arguments, apply_overrides, data_dir_from_env, load_config
 from .data import build_taxonomy, load_manifest, make_loader
 from .engine import evaluate_loader
 from .runtime import MODEL_SEED, configure_runtime, select_device, write_json
@@ -33,9 +33,11 @@ def main(argv: list[str] | None = None) -> None:
     checkpoint_path = args.checkpoint.expanduser().resolve()
     model, checkpoint = load_checkpoint(checkpoint_path, device)
     saved_config = checkpoint["config"]
-    # An explicit config controls data location; otherwise use the recorded paths.
+    # Reuse recorded paths unless a config, CLI flag or dataset environment override is supplied.
     if args.config is None:
         for key in ("data_dir", "split_file"):
+            if key == "data_dir" and data_dir_from_env() is not None:
+                continue
             if getattr(args, key) is None and key in saved_config.get("data", {}):
                 config["data"][key] = saved_config["data"][key]
     data_dir, split_file = (Path(config["data"][key]) for key in ("data_dir", "split_file"))
