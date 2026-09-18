@@ -42,6 +42,7 @@ def evaluate_loader(model: nn.Module, loader, device: torch.device, *,
         if task not in class_mappings or not class_mappings[task]:
             raise ValueError(f"Missing class mapping for task {task!r}.")
     total_loss = 0.0
+    task_losses = {task: 0.0 for task in tasks}
     truths = {task: [] for task in tasks}
     predictions = {task: [] for task in tasks}
     with torch.no_grad():
@@ -54,10 +55,12 @@ def evaluate_loader(model: nn.Module, loader, device: torch.device, *,
             for task in tasks:
                 if outputs[task].ndim != 2 or outputs[task].shape[1] != len(class_mappings[task]):
                     raise ValueError(f"Output class count does not match task {task!r}.")
+                task_losses[task] += nn.functional.cross_entropy(outputs[task], targets[task]).item() * len(images)
                 truths[task].extend(targets[task].cpu().tolist())
                 predictions[task].extend(outputs[task].argmax(1).cpu().tolist())
     metrics = {
         task: {
+            "loss": task_losses[task] / len(loader.dataset),
             "accuracy": float(accuracy_score(truths[task], predictions[task])),
             "macro_f1": float(f1_score(truths[task], predictions[task],
                                       labels=range(len(class_mappings[task])), average="macro", zero_division=0)),

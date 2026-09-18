@@ -21,7 +21,7 @@ leaf_hierarchy/
     models/                # Model definitions and access to learned features.
   experiments/             # Experiment catalog, configurations and documentation.
   results/                 # Prepared data and run artifacts; ignored by Git.
-  tests/                   # Model-independent checks for data, loss and metrics.
+  tests/                   # Data, loss, metrics and model workflow checks.
   report/                  # Thesis source and compilation instructions.
   pyproject.toml           # Package metadata, dependencies and command entry point.
 ```
@@ -114,6 +114,15 @@ prediction restore the model and image preprocessing. Prediction needs no experi
 configuration. The [generated results](#generated-results) section explains the outputs.
 The [catalog](experiments/README.md) lists the available experiments.
 
+The [multitask experiment](experiments/resnet18_multitask/README.md) trains family,
+genus and species heads together using the same data and baseline settings:
+
+```text
+leaf-hierarchy train --config experiments/resnet18_multitask/config.toml
+```
+
+It saves metrics for each taxonomic level independently in validation and test.
+
 ### Advanced options
 
 Keep experiment settings in the TOML file, including `[training].lr` and
@@ -152,9 +161,16 @@ results/
             ├── config.json
             ├── history.csv
             ├── best.pt
+            ├── validation/
+            │   ├── validation_metrics.json
+            │   ├── validation_species_metrics.json
+            │   ├── validation_predictions.csv
+            │   ├── validation_species_classification_report.csv
+            │   └── validation_species_confusion_matrix.csv
             └── test/
                 ├── evaluation_config.json
                 ├── test_metrics.json
+                ├── test_species_metrics.json
                 ├── test_predictions.csv
                 ├── test_species_classification_report.csv
                 └── test_species_confusion_matrix.csv
@@ -175,7 +191,8 @@ checkpoint path.
 2. **Train (`leaf-hierarchy train`).** Creates a new run directory for the configured
    experiment. `config.json` records the settings and input identities; `history.csv`
    records training loss and validation metrics by epoch; `best.pt` contains the
-   model selected using validation data. Training does not create test results.
+   model selected using validation data. `validation/` saves metrics, reports and
+   predictions for that selected checkpoint. Training does not create test results.
 
 3. **Evaluate (`leaf-hierarchy evaluate --checkpoint CHECKPOINT`).** Creates `test/`
    beside the selected checkpoint. It saves the evaluation settings, overall test
@@ -201,8 +218,8 @@ python -m pip check
 ```
 
 Expect the test suite to end in `OK` and `No broken requirements found.` The tests use
-synthetic inputs and need no dataset or trained model. To check model execution as
-well, follow the evaluation and prediction examples linked above.
+synthetic inputs and need no dataset or trained model. They also exercise training,
+checkpoint reload, evaluation and prediction for both model variants.
 
 ## Reproducibility
 

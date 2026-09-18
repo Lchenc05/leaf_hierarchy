@@ -10,10 +10,8 @@ from .checkpoints import check_split_identity, load_checkpoint
 from .config import add_common_arguments, apply_overrides, data_dir_from_env, load_config
 from .data import build_taxonomy, load_manifest, make_loader
 from .engine import evaluate_loader
+from .reporting import save_evaluation_results
 from .runtime import MODEL_SEED, configure_runtime, select_device, write_json
-
-import pandas as pd
-from sklearn.metrics import classification_report, confusion_matrix
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -55,15 +53,11 @@ def main(argv: list[str] | None = None) -> None:
     loader = make_loader(data, "test", data_dir, config["training"]["batch_size"], seed,
                          class_mappings=mappings, tasks=tasks, preprocessing=checkpoint["preprocessing"])
     result = evaluate_loader(model, loader, device, tasks=tasks, class_mappings=mappings)
-    metrics = {"selected_epoch": int(checkpoint.get("epoch", -1)), "test_loss": result["loss"],
-               "test_images": len(loader.dataset), "tasks": result["tasks"]}
-    if tasks == ["species"]:
-        species_metrics = result["tasks"]["species"]
-        metrics.update(test_accuracy=species_metrics["accuracy"], test_macro_f1=species_metrics["macro_f1"],
-                       num_classes=species_metrics["num_classes"])
     output_dir = (args.output_dir or checkpoint_path.parent / "test").expanduser().resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    write_json(output_dir / "test_metrics.json", metrics)
+    metrics = save_evaluation_results(
+        output_dir, split="test", result=result, frame=loader.dataset.frame,
+        class_mappings=mappings, selected_epoch=checkpoint.get("epoch", -1),
+    )
     write_json(output_dir / "evaluation_config.json", {
         "checkpoint": str(checkpoint_path), "checkpoint_sha256": hashlib.sha256(checkpoint_path.read_bytes()).hexdigest(),
         "data": {"data_dir": str(data_dir), "split_file": str(split_file)}, "device": str(device),
@@ -71,23 +65,9 @@ def main(argv: list[str] | None = None) -> None:
         "num_threads": config["runtime"]["num_threads"], "preprocessing": checkpoint["preprocessing"],
         "tasks": tasks,
     })
-    identity_columns = [column for column in ("image_path", "species", "genus", "family", "group_id")
-                        if column in loader.dataset.frame.columns]
-    predictions = loader.dataset.frame[identity_columns].copy()
     for task in tasks:
-        names = [name for name, _ in sorted(mappings[task].items(), key=lambda pair: pair[1])]
-        labels = list(range(len(names)))
-        true, predicted = result["true_labels"][task], result["predicted_labels"][task]
-        report = classification_report(true, predicted, labels=labels, target_names=names,
-                                       output_dict=True, zero_division=0)
-        pd.DataFrame(report).transpose().to_csv(output_dir / f"test_{task}_classification_report.csv",
-                                              encoding="utf-8", index_label="label")
-        pd.DataFrame(confusion_matrix(true, predicted, labels=labels), index=names, columns=names).to_csv(
-            output_dir / f"test_{task}_confusion_matrix.csv", encoding="utf-8", index_label=f"true_{task}")
-        predictions[f"predicted_{task}"] = [names[index] for index in predicted]
         task_metrics = result["tasks"][task]
         print(f"Test {task} | accuracy: {task_metrics['accuracy']:.4f} | macro F1: {task_metrics['macro_f1']:.4f}")
-    predictions.to_csv(output_dir / "test_predictions.csv", index=False, encoding="utf-8")
     print(f"Selected model: epoch {metrics['selected_epoch']}")
     print(f"Saved metrics and predictions: {output_dir}")
 

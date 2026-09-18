@@ -87,6 +87,7 @@ Training prints a timestamped directory under `results/runs/resnet18_species/`:
 | `config.json` | Resolved settings, class mapping, input fingerprints and runtime metadata |
 | `history.csv` | Training and validation measurements by epoch |
 | `best.pt` | Selected model state, architecture, labels, preprocessing and selection metadata |
+| `validation/` | Selected-checkpoint species metrics, per-class report, confusion matrix and predictions |
 
 Automatic training resume is not implemented. An interrupted run can contain partial
 artifacts; use a new run for a complete experiment.
@@ -102,6 +103,7 @@ Evaluation uses the test split and saves these files in the run's `test/` direct
 | Artifact | Contents |
 | --- | --- |
 | `test_metrics.json` | Selected epoch, test loss, accuracy, macro F1 and support |
+| `test_species_metrics.json` | Independent species loss, accuracy, macro F1, class count, image count and selected epoch |
 | `evaluation_config.json` | Checkpoint path and hash, input paths, runtime settings and preprocessing |
 | `test_species_classification_report.csv` | Per-species precision, recall, F1 and support |
 | `test_species_confusion_matrix.csv` | True species in rows and predicted species in columns |
@@ -236,9 +238,9 @@ an updated taxonomy as a new experimental target.
 
 ## Shared checks
 
-The current suite contains architecture-independent checks for data identity,
-taxonomy, label alignment, loss and metrics. It uses synthetic inputs and requires
-no trained model or dataset download.
+The current suite checks data identity, taxonomy, label alignment, loss and metrics,
+plus training, checkpoint reload, evaluation and prediction for the species and
+multitask models. It uses synthetic inputs and requires no trained model or dataset download.
 
 Run the shared checks from the repository root after installing the project:
 

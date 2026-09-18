@@ -15,6 +15,7 @@ from .config import add_common_arguments, apply_overrides, load_config
 from .data import build_taxonomy, load_manifest, make_loader, split_fingerprint
 from .engine import evaluate_loader, task_loss
 from .models import create_model
+from .reporting import save_evaluation_results
 from .runtime import ROOT, SPLITS, configure_runtime, select_device, write_json
 
 import pandas as pd
@@ -91,6 +92,8 @@ def main(argv: list[str] | None = None) -> None:
         "split_sizes": {split: int(data["split"].eq(split).sum()) for split in SPLITS},
         "class_mappings": mappings, "run_dir": str(run_dir), "source": source_provenance(),
         "selection_tie_breaker": "lower_validation_loss",
+        "loss": {"name": "cross_entropy", "reduction": "sum_of_task_means",
+                 "weights": {task: 1.0 for task in tasks}},
         "versions": {
             "python": platform.python_version(), "torch": str(torch.__version__),
             "torchvision": str(torchvision.__version__),
@@ -132,6 +135,10 @@ def main(argv: list[str] | None = None) -> None:
             best_score = (selected_metric, -val_loss)
             save_checkpoint(run_dir / "best.pt", model, config=config, taxonomy=taxonomy, epoch=epoch,
                             metrics={"validation_loss": val_loss, "validation": validation["tasks"]})
+            save_evaluation_results(
+                run_dir / "validation", split="validation", result=validation,
+                frame=loaders["validation"].dataset.frame, class_mappings=mappings, selected_epoch=epoch,
+            )
         row = {"epoch": epoch, "train_loss": train_loss / len(loaders["train"].dataset), "val_loss": val_loss}
         for task, metrics in validation["tasks"].items():
             row.update({f"val_{task}_{key}": value for key, value in metrics.items() if key != "num_classes"})

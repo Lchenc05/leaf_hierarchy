@@ -8,17 +8,24 @@ def validate_model_spec(spec: dict) -> dict:
         raise ValueError("A model specification must contain architecture and tasks.")
     if spec["architecture"] != "resnet18":
         raise ValueError(f"Unsupported architecture: {spec['architecture']!r}.")
-    if spec["tasks"] != ["species"]:
-        raise ValueError("The implemented ResNet18 experiment supports tasks=['species']; multitask models are planned.")
+    if spec["tasks"] not in (["species"], ["family", "genus", "species"]):
+        raise ValueError("ResNet18 supports tasks=['species'] or ['family', 'genus', 'species'].")
     return {"architecture": spec["architecture"], "tasks": list(spec["tasks"])}
 
 
 def create_model(spec: dict, class_mappings: dict, pretrained: bool = False):
     spec = validate_model_spec(spec)
-    from .resnet import ResNetClassifier
-    mapping = class_mappings.get("species", {})
-    if (len(mapping) < 2 or any(not isinstance(name, str) or not name.strip() for name in mapping)
-            or any(type(index) is not int for index in mapping.values())
-            or set(mapping.values()) != set(range(len(mapping)))):
-        raise ValueError("The species vocabulary must have at least two contiguous class indices.")
-    return ResNetClassifier(len(mapping), pretrained=pretrained)
+    from .resnet import ResNetClassifier, ResNetMultitaskClassifier
+    counts = {}
+    for task in spec["tasks"]:
+        mapping = class_mappings.get(task, {})
+        minimum = 2 if task == "species" else 1
+        if (not isinstance(mapping, dict) or len(mapping) < minimum
+                or any(not isinstance(name, str) or not name.strip() for name in mapping)
+                or any(type(index) is not int for index in mapping.values())
+                or set(mapping.values()) != set(range(len(mapping)))):
+            raise ValueError(f"The {task} vocabulary requires at least {minimum} contiguous class indices.")
+        counts[task] = len(mapping)
+    if spec["tasks"] == ["species"]:
+        return ResNetClassifier(counts["species"], pretrained=pretrained)
+    return ResNetMultitaskClassifier(counts, pretrained=pretrained)
