@@ -1,9 +1,9 @@
 # leaf_hierarchy
 
-Research code for hierarchical plant classification from leaf images. The project
-investigates the use of family, genus and species relationships in classification
-and multitask learning, the taxonomic information captured by learned
-representations, and the visual evidence behind model predictions.
+Research code for plant classification from leaf images. The project includes
+species-only and multitask ResNet18 models, dataset preparation, training,
+evaluation and comparison of inference methods using family, genus and species
+relationships.
 
 The repository organizes this work as reproducible experiments. Each experiment
 documents its research question, data, configuration, evaluation protocol and results.
@@ -121,7 +121,23 @@ genus and species heads together using the same data and baseline settings:
 leaf-hierarchy train --config experiments/resnet18_multitask/config.toml
 ```
 
-It saves metrics for each taxonomic level independently in validation and test.
+Training saves validation metrics for each taxonomic level. Run `evaluate`
+separately to save the corresponding test metrics.
+
+Compare the coherence and accuracy of three decision rules on a saved multitask
+model, without retraining:
+
+```text
+leaf-hierarchy compare-hierarchy --checkpoint CHECKPOINT --split validation
+```
+
+This evaluates independent heads, parents derived from the predicted species, and
+equal-weight joint inference over valid family/genus/species paths. It creates a
+separate analysis directory and preserves the original evaluation results. See the
+[hierarchical inference experiment](experiments/hierarchy_inference/README.md) for
+the fixed protocol, multi-seed comparison and test evaluation.
+
+`evaluate` and `predict` use independent predictions for each output head.
 
 ### Advanced options
 
@@ -203,6 +219,15 @@ checkpoint path.
    Prints the prediction and softmax score in the terminal. It creates no result
    files; `--json` also prints to the terminal.
 
+5. **Compare hierarchy (`leaf-hierarchy compare-hierarchy --checkpoint CHECKPOINT --split validation`).**
+   Creates a new directory under `results/analysis/hierarchy/` with results for
+   all three inference methods. `summary.csv` contains each model's metrics;
+   `aggregate.csv` contains means and sample standard deviations across models.
+   Each model also has saved scores, per-image predictions, classification reports
+   and confusion matrices. Use `--split test` to evaluate the same fixed rules on
+   test. See the [experiment guide](experiments/hierarchy_inference/README.md#outputs-and-interpretation)
+   for the complete output layout.
+
 Reuse the prepared data across training runs: skip `prepare` when its output already
 exists, because it refuses to overwrite that directory. Every `train` invocation
 creates a new run directory. Repeating `evaluate` for the same checkpoint replaces
@@ -227,7 +252,8 @@ Prepared data, experiment definitions and individual runs have separate identiti
 Keep the partition, taxonomy and preprocessing fixed when a comparison requires
 them to be shared. Record any change to the data or evaluation protocol explicitly.
 
-Raw images, generated results and checkpoints are excluded from Git. Preserve the
-artifacts of evaluated runs separately, together with their configurations and input
-fingerprints. Each experiment guide records its reproduction instructions and
-evaluation results.
+Raw dataset images, checkpoints and generated artifacts under `results/` are
+excluded from Git. Temporary files under `tmp/` are also ignored. Preserve the
+artifacts of evaluated runs separately, together with their configurations and
+input fingerprints. Each experiment guide records its reproduction instructions
+and evaluation results.

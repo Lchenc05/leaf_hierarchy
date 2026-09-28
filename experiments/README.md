@@ -1,13 +1,16 @@
 # Experiment catalog
 
-Each experiment has a directory containing its research question, configuration,
-execution instructions, evaluation protocol and measured results. Shared command
-examples and installation instructions are in the [project README](../README.md).
+Each experiment has a directory containing its research question, settings or fixed
+protocol, execution instructions and measured results. Training experiments provide
+a TOML configuration; hierarchical inference uses saved multitask checkpoints.
+Shared command examples and installation instructions are in the
+[project README](../README.md).
 
 | Experiment | Purpose | Data | Configuration |
 | --- | --- | --- | --- |
 | [ResNet18 species classification](resnet18_species/README.md) | Species-classification reference for comparisons of taxonomic learning objectives. | [PlantCLEF2015 tree leaf scans](../PlantCLEF2015TrainingData/README.md) | [config.toml](resnet18_species/config.toml) |
 | [ResNet18 multitask classification](resnet18_multitask/README.md) | Shared backbone with family, genus and species heads; separate validation and test metrics. | Same prepared manifest as the species baseline | [config.toml](resnet18_multitask/config.toml) |
+| [Hierarchical inference](hierarchy_inference/README.md) | Compare independent predictions, species-derived parents and equal-weight joint valid paths on saved multitask checkpoints. | Same saved partition and taxonomy | Fixed inference protocol; no training |
 
 ## Run the reference experiment
 

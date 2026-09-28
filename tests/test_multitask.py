@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from leaf_hierarchy import evaluation, prediction, training
+from leaf_hierarchy import evaluation, hierarchy_evaluation, prediction, training
 from leaf_hierarchy.checkpoints import load_checkpoint
 from leaf_hierarchy.config import load_config
 from leaf_hierarchy.data import make_loader, load_manifest
@@ -18,6 +18,7 @@ from leaf_hierarchy.models import create_model, validate_model_spec
 from leaf_hierarchy.runtime import ROOT, configure_runtime
 
 import pandas as pd
+import numpy as np
 from PIL import Image
 import torch
 from torch import nn
@@ -152,6 +153,33 @@ class MultitaskTests(unittest.TestCase):
                         prediction.main(["--checkpoint", str(run / "best.pt"), "--image", str(root / "0_test.png"),
                                          "--device", "cpu", "--num-threads", "2", "--json"])
                     self.assertEqual(set(json.loads(output_json.getvalue())["predictions"]), set(tasks))
+                    if len(tasks) == 3:
+                        from leaf_hierarchy.hierarchy import decode_logits
+                        for split in ("validation", "test"):
+                            comparison_dir = root / f"hierarchy_{split}"
+                            command = ["--checkpoint", str(run / "best.pt"), "--output-dir", str(comparison_dir),
+                                       "--device", "cpu", "--num-threads", "2"]
+                            if split == "test":
+                                command += ["--split", "test"]
+                            hierarchy_evaluation.main(command)
+                            status = json.loads((comparison_dir / "comparison_config.json").read_text())
+                            self.assertEqual(status["status"], "complete")
+                            self.assertEqual(status["split"], split)
+                            details = next(p for p in comparison_dir.iterdir() if p.is_dir())
+                            actual = pd.read_csv(details / "predictions.csv")
+                            original = pd.read_csv(run / split / f"{split}_predictions.csv")
+                            self.assertEqual(actual["image_path"].tolist(), original["image_path"].tolist())
+                            for task in tasks:
+                                self.assertEqual(actual[f"independent_{task}"].tolist(), original[f"predicted_{task}"].tolist())
+                            self.assertTrue(actual["species_path_valid_path"].all())
+                            self.assertTrue(actual["joint_path_valid_path"].all())
+                            with np.load(details / "scores.npz", allow_pickle=False) as scores:
+                                decoded, _ = decode_logits({t: scores[f"logits_{t}"] for t in tasks}, checkpoint["taxonomy"])
+                                for task in tasks:
+                                    names = scores[f"classes_{task}"]
+                                    self.assertEqual(names[decoded["joint_path"][task]].tolist(), actual[f"joint_path_{task}"].tolist())
+                            with self.assertRaises(FileExistsError):
+                                hierarchy_evaluation.main(command)
 
 
 if __name__ == "__main__":

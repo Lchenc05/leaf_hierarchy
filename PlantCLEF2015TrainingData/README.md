@@ -39,8 +39,7 @@ licence and attribution information; the official description reports Creative
 Commons licensing.
 
 Raw data and downloaded archives are ignored by Git. The guide and frozen botanical
-snapshot are tracked. Additional datasets should have their own documentation and
-raw-data ignore rules.
+snapshot are tracked.
 
 ### Configure the dataset location
 
@@ -210,10 +209,7 @@ unique, and all three label levels are present for every active record.
 
 There is a documented difference between authorities: the XML assigns
 `Viburnum lantana L.` and `Viburnum tinus L.` to `Adoxaceae`, while their frozen WCVP
-accepted records use `Viburnaceae`. The original labels are retained. Before an
-experiment uses a harmonized taxonomy, choose its authority and version, record
-the old-to-new correspondence and save a distinct hierarchy version. This decision
-belongs to the research protocol.
+accepted records use `Viburnaceae`. The original labels are retained.
 
 The snapshot retains its original bytes. Split seeds incorporate the original species
 names, so changing taxonomic labels can also change partition assignments. Treat such

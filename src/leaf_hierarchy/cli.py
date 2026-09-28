@@ -7,6 +7,7 @@ COMMANDS = {
     "prepare": "leaf_hierarchy.data.plantclef2015",
     "train": "leaf_hierarchy.training",
     "evaluate": "leaf_hierarchy.evaluation",
+    "compare-hierarchy": "leaf_hierarchy.hierarchy_evaluation",
     "predict": "leaf_hierarchy.prediction",
 }
 

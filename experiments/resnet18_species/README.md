@@ -1,9 +1,8 @@
 # ResNet18 species baseline
 
-This experiment establishes a species-classification baseline for comparison with
-subsequent hierarchical family/genus/species models. It uses ResNet18 with one species
-head, initialized from ImageNet. Hierarchical objectives, representation analyses and
-Grad-CAM are subsequent work and are not results of this experiment.
+This experiment uses ResNet18 with one species head, initialized from ImageNet.
+It provides the species-classification baseline for comparison with the
+[family/genus/species multitask model](../resnet18_multitask/README.md).
 
 ## Environment
 
@@ -89,7 +88,7 @@ Training prints a timestamped directory under `results/runs/resnet18_species/`:
 | `best.pt` | Selected model state, architecture, labels, preprocessing and selection metadata |
 | `validation/` | Selected-checkpoint species metrics, per-class report, confusion matrix and predictions |
 
-Automatic training resume is not implemented. An interrupted run can contain partial
+Each training command starts a new run. An interrupted run can contain partial
 artifacts; use a new run for a complete experiment.
 
 Replace `RUN_ID` with the name printed by training:
@@ -233,8 +232,7 @@ not been evaluated in this reference experiment.
 
 The active labels span 32 genera and 21 families in the original dataset taxonomy.
 The [dataset guide](../../PlantCLEF2015TrainingData/README.md#taxonomic-labels)
-describes their provenance and a family-name discrepancy to resolve before treating
-an updated taxonomy as a new experimental target.
+describes their provenance and the family-name discrepancy in the preserved labels.
 
 ## Shared checks
 

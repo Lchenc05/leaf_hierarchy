@@ -21,6 +21,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 _work/
+/tmp/
 .DS_Store
 Thumbs.db
 
