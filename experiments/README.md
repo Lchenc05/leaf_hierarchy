@@ -1,8 +1,8 @@
 # Experiment catalog
 
 Each experiment has a directory containing its research question, settings or fixed
-protocol, execution instructions and measured results. Training experiments provide
-a TOML configuration; hierarchical inference uses saved multitask checkpoints.
+protocol, execution instructions and any completed measurements. Training
+experiments provide a TOML configuration; hierarchical inference uses saved multitask checkpoints.
 Shared command examples and installation instructions are in the
 [project README](../README.md).
 
@@ -10,6 +10,7 @@ Shared command examples and installation instructions are in the
 | --- | --- | --- | --- |
 | [ResNet18 species classification](resnet18_species/README.md) | Species-classification reference for comparisons of taxonomic learning objectives. | [PlantCLEF2015 tree leaf scans](../PlantCLEF2015TrainingData/README.md) | [config.toml](resnet18_species/config.toml) |
 | [ResNet18 multitask classification](resnet18_multitask/README.md) | Shared backbone with family, genus and species heads; separate validation and test metrics. | Same prepared manifest as the species baseline | [config.toml](resnet18_multitask/config.toml) |
+| [ResNet18 consistency regularization](resnet18_consistency/README.md) | Multitask cross-entropy plus a Jensen-Shannon penalty between parent probabilities and summed child probabilities. | Same prepared manifest and taxonomy as multitask training | [config.toml](resnet18_consistency/config.toml) |
 | [Hierarchical inference](hierarchy_inference/README.md) | Compare independent predictions, species-derived parents and equal-weight joint valid paths on saved multitask checkpoints. | Same saved partition and taxonomy | Fixed inference protocol; no training |
 
 ## Run the reference experiment
@@ -53,11 +54,17 @@ checkpoint path with the one printed by training.
 Evaluate the selected model on the held-out test split:
 
 ```text
-leaf-hierarchy evaluate --checkpoint results/runs/resnet18_species/RUN_ID/best.pt
+leaf-hierarchy evaluate --checkpoint results/runs/resnet18_species/RUN_ID/best.pt --split test
 ```
 
 The command prints accuracy and macro F1 and saves metrics, per-species reports,
 a confusion matrix and per-image predictions in that run's `test/` directory.
+Use `--split validation` to evaluate validation instead; omitting `--split` selects
+test. The same command automatically compares `independent`, `species_path` and
+`joint_path` for multitask checkpoints, with or without consistency regularization.
+Each split's results are stored beside its checkpoint. The
+[inference guide](hierarchy_inference/README.md#run-the-comparison) explains these
+methods and the separate command for comparing multiple checkpoints.
 
 Predict the species of one image:
 

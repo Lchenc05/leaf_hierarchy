@@ -11,6 +11,7 @@ import tomllib
 from pathlib import Path
 
 from .models import validate_model_spec
+from .consistency import validate_consistency_weight
 from .preprocessing import (default_augmentation, default_preprocessing,
                             validate_augmentation, validate_preprocessing)
 from .runtime import DEFAULT_DATA_DIR, DEFAULT_SPLIT_FILE, MODEL_SEED, ROOT
@@ -31,7 +32,7 @@ def default_config() -> dict:
         "data": {"data_dir": str(DEFAULT_DATA_DIR), "split_file": str(DEFAULT_SPLIT_FILE)},
         "model": {"architecture": "resnet18", "tasks": ["species"], "weights": "imagenet"},
         "training": {"epochs": 5, "batch_size": 16, "seed": MODEL_SEED,
-                     "lr": 1e-4, "weight_decay": 1e-4},
+                     "lr": 1e-4, "weight_decay": 1e-4, "consistency_weight": 0.0},
         "runtime": {"device": "auto", "num_threads": 6},
         "output": {"run_root": str(ROOT / "results" / "runs")},
         "selection": {"task": "species", "metric": "macro_f1"},
@@ -72,6 +73,7 @@ def validate_config(config: dict) -> None:
         value = config["training"][key]
         if type(value) not in (int, float) or not math.isfinite(value) or value < 0 or (key == "lr" and value == 0):
             raise ValueError(f"training.{key} must be finite and {'positive' if key == 'lr' else 'nonnegative'}.")
+    validate_consistency_weight(config["training"]["consistency_weight"], model["tasks"])
     if config["runtime"]["device"] not in ("auto", "cpu", "cuda"):
         raise ValueError("runtime.device must be 'auto', 'cpu', or 'cuda'.")
     if config["selection"]["task"] not in model["tasks"]:
@@ -130,6 +132,7 @@ def apply_overrides(config: dict, args: argparse.Namespace) -> dict:
         "data_dir": ("data", "data_dir"), "split_file": ("data", "split_file"),
         "epochs": ("training", "epochs"), "batch_size": ("training", "batch_size"),
         "seed": ("training", "seed"), "weights": ("model", "weights"),
+        "consistency_weight": ("training", "consistency_weight"),
         "device": ("runtime", "device"), "num_threads": ("runtime", "num_threads"),
     }
     for option, (section, key) in options.items():
@@ -148,3 +151,19 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default=None)
     parser.add_argument("--num-threads", type=int, default=None)
+
+
+def evaluation_settings(config: dict, args: argparse.Namespace, saved: dict) -> tuple[dict, int, int]:
+    """Resolve shared evaluation inputs; explicit overrides precede saved defaults."""
+    data = dict(config["data"])
+    if args.config is None:
+        for key in ("data_dir", "split_file"):
+            if key == "data_dir" and data_dir_from_env() is not None:
+                continue
+            if getattr(args, key) is None and key in saved.get("data", {}):
+                data[key] = saved["data"][key]
+    batch_size = config["training"]["batch_size"]
+    if args.batch_size is None and args.config is None:
+        batch_size = saved.get("training", {}).get("batch_size", saved.get("batch_size", 16))
+    seed = saved.get("training", {}).get("seed", saved.get("seed", MODEL_SEED))
+    return data, batch_size, seed

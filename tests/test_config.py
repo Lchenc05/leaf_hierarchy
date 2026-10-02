@@ -156,6 +156,24 @@ class DatasetLocationTests(unittest.TestCase):
         self.assertEqual(config["training"]["weight_decay"], 0.02)
         self.assertEqual(config["training"]["epochs"], 1)
 
+    def test_consistency_weight_defaults_toml_cli_and_invalid_settings(self):
+        self.assertEqual(load_config()["training"]["consistency_weight"], 0.)
+        multitask = '[model]\ntasks = ["family", "genus", "species"]\n'
+        self.config_file.write_text(multitask + '[training]\nconsistency_weight = 0.4\n', encoding="utf-8")
+        args = training.parse_args(["--config", str(self.config_file), "--consistency-weight", "0.2"])
+        loaded = load_config(args.config)
+        changed = apply_overrides(loaded, args)
+        self.assertEqual(loaded["training"]["consistency_weight"], .4)
+        self.assertEqual(changed["training"]["consistency_weight"], .2)
+        for value in ("-1", "nan", "inf", "true"):
+            with self.subTest(value=value):
+                self.config_file.write_text(multitask + f'[training]\nconsistency_weight = {value}\n', encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "consistency_weight"):
+                    load_config(self.config_file)
+        self.config_file.write_text('[training]\nconsistency_weight = 1.0\n', encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "family"):
+            load_config(self.config_file)
+
     def evaluate_paths(self, *arguments):
         """Stop at the first dataset read and expose its paths to each scenario."""
         checkpoint = {

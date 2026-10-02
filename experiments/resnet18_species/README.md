@@ -94,19 +94,25 @@ artifacts; use a new run for a complete experiment.
 Replace `RUN_ID` with the name printed by training:
 
 ```text
-leaf-hierarchy evaluate --checkpoint results/runs/resnet18_species/RUN_ID/best.pt
+leaf-hierarchy evaluate --checkpoint results/runs/resnet18_species/RUN_ID/best.pt --split validation
+leaf-hierarchy evaluate --checkpoint results/runs/resnet18_species/RUN_ID/best.pt --split test
 ```
 
-Evaluation uses the test split and saves these files in the run's `test/` directory:
+`--split` selects validation or test and defaults to test. For this species-only
+checkpoint, evaluation uses independent species predictions. Validation evaluation
+writes to `validation/`, while test evaluation saves the following files in `test/`:
 
 | Artifact | Contents |
 | --- | --- |
 | `test_metrics.json` | Selected epoch, test loss, accuracy, macro F1 and support |
 | `test_species_metrics.json` | Independent species loss, accuracy, macro F1, class count, image count and selected epoch |
-| `evaluation_config.json` | Checkpoint path and hash, input paths, runtime settings and preprocessing |
+| `evaluation_config.json` | Checkpoint path and hash, split, methods, input paths, runtime settings and preprocessing |
 | `test_species_classification_report.csv` | Per-species precision, recall, F1 and support |
 | `test_species_confusion_matrix.csv` | True species in rows and predicted species in columns |
 | `test_predictions.csv` | Predictions associated with the input records |
+
+Validation uses the same files with a `validation_` prefix. Repeating evaluation
+replaces its generated files for that split and preserves unrelated files.
 
 Use the same manifest for training and evaluation. For a custom data location and
 prepared dataset, edit the existing `[data]` section of `config.toml`:

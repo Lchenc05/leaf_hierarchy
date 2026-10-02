@@ -1,9 +1,9 @@
 # leaf_hierarchy
 
 Research code for plant classification from leaf images. The project includes
-species-only and multitask ResNet18 models, dataset preparation, training,
-evaluation and comparison of inference methods using family, genus and species
-relationships.
+species-only and multitask ResNet18 models, dataset preparation, training with
+optional taxonomic consistency regularization, evaluation and comparison of
+inference methods using family, genus and species relationships.
 
 The repository organizes this work as reproducible experiments. Each experiment
 documents its research question, data, configuration, evaluation protocol and results.
@@ -105,7 +105,7 @@ Then evaluate the saved model and predict one image. Replace `CHECKPOINT` with t
 path to `best.pt` printed by training and `IMAGE` with your image path:
 
 ```text
-leaf-hierarchy evaluate --checkpoint CHECKPOINT
+leaf-hierarchy evaluate --checkpoint CHECKPOINT --split test
 leaf-hierarchy predict --checkpoint CHECKPOINT --image IMAGE
 ```
 
@@ -121,23 +121,49 @@ genus and species heads together using the same data and baseline settings:
 leaf-hierarchy train --config experiments/resnet18_multitask/config.toml
 ```
 
-Training saves validation metrics for each taxonomic level. Run `evaluate`
-separately to save the corresponding test metrics.
+Training saves independent validation metrics for each taxonomic level and uses
+species macro F1 to select the checkpoint. Run `evaluate` separately to compare
+inference methods on that checkpoint in validation or test.
 
-Compare the coherence and accuracy of three decision rules on a saved multitask
-model, without retraining:
+The [consistency experiment](experiments/resnet18_consistency/README.md) adds a
+penalty for disagreement between parent probabilities and summed child
+probabilities during multitask training:
 
 ```text
-leaf-hierarchy compare-hierarchy --checkpoint CHECKPOINT --split validation
+leaf-hierarchy train --config experiments/resnet18_consistency/config.toml
 ```
 
-This evaluates independent heads, parents derived from the predicted species, and
-equal-weight joint inference over valid family/genus/species paths. It creates a
-separate analysis directory and preserves the original evaluation results. See the
-[hierarchical inference experiment](experiments/hierarchy_inference/README.md) for
-the fixed protocol, multi-seed comparison and test evaluation.
+`[training].consistency_weight` controls this penalty. It defaults to `0` for the
+original objective; the consistency configuration uses `1` as an initial setting,
+not a value selected for optimal performance. Training accepts
+`--consistency-weight` to override it. Evaluation restores the weight saved in the
+checkpoint, including when `--config` supplies different runtime or data settings.
 
-`evaluate` and `predict` use independent predictions for each output head.
+Use the same evaluation command for every model. Select validation to compare
+configurations and decision rules, then test to measure the fixed choices:
+
+```text
+leaf-hierarchy evaluate --checkpoint CHECKPOINT --split validation
+leaf-hierarchy evaluate --checkpoint CHECKPOINT --split test
+```
+
+`--split` defaults to `test`. The checkpoint determines the methods automatically:
+
+| Saved model | Evaluation methods |
+| --- | --- |
+| Species-only | Independent species predictions |
+| Family/genus/species multitask, with or without consistency regularization | `independent`, `species_path` and `joint_path` |
+
+For multitask checkpoints, evaluation compares independent heads, parents derived
+from the predicted species and equal-weight joint inference over valid taxonomic
+paths. All three methods reuse the same scores from one pass over the images.
+Results go beside the checkpoint in `validation/` or `test/`. No method flag is
+needed. `predict` continues to use independent output heads.
+
+The existing `compare-hierarchy` command remains available for separate analysis
+directories and comparisons across multiple checkpoints. See the
+[hierarchical inference experiment](experiments/hierarchy_inference/README.md) for
+the fixed protocol, output files and multi-seed comparison.
 
 ### Advanced options
 
@@ -209,17 +235,30 @@ checkpoint path.
    records training loss and validation metrics by epoch; `best.pt` contains the
    model selected using validation data. `validation/` saves metrics, reports and
    predictions for that selected checkpoint. Training does not create test results.
+   Multitask runs also record the unweighted consistency loss, its weighted
+   contribution and the coherence of independent validation predictions. Per-task
+   losses remain cross-entropy. See the
+   [consistency outputs](experiments/resnet18_consistency/README.md#saved-results)
+   for the additional CSV columns and JSON fields.
 
-3. **Evaluate (`leaf-hierarchy evaluate --checkpoint CHECKPOINT`).** Creates `test/`
-   beside the selected checkpoint. It saves the evaluation settings, overall test
-   metrics, predictions for each image, per-species precision/recall/F1 and the
-   confusion matrix. Run this command separately after training.
+3. **Evaluate (`leaf-hierarchy evaluate --checkpoint CHECKPOINT --split test`).**
+   Writes `test/` beside the checkpoint; `--split validation` writes `validation/`
+   instead. It saves evaluation settings, metrics, predictions, per-class reports
+   and confusion matrices. Multitask checkpoints automatically include all three
+   methods: `summary.csv` compares their metrics, and `independent/`,
+   `species_path/` and `joint_path/` contain their reports and matrices.
+   The original `SPLIT_*` files retain independent predictions and loss components.
+   `SPLIT_metrics.json` also includes a `methods` object for the comparison.
+   Saved logits, taxonomy and combined predictions allow the comparison to be
+   inspected without another model pass. The
+   [inference output layout](experiments/hierarchy_inference/README.md#outputs-and-interpretation)
+   lists these files. Evaluation restores the checkpoint's consistency weight.
 
 4. **Predict (`leaf-hierarchy predict --checkpoint CHECKPOINT --image IMAGE`).**
    Prints the prediction and softmax score in the terminal. It creates no result
    files; `--json` also prints to the terminal.
 
-5. **Compare hierarchy (`leaf-hierarchy compare-hierarchy --checkpoint CHECKPOINT --split validation`).**
+5. **Compare multiple checkpoints (`leaf-hierarchy compare-hierarchy --checkpoint CHECKPOINT --split validation`).**
    Creates a new directory under `results/analysis/hierarchy/` with results for
    all three inference methods. `summary.csv` contains each model's metrics;
    `aggregate.csv` contains means and sample standard deviations across models.
@@ -230,8 +269,10 @@ checkpoint path.
 
 Reuse the prepared data across training runs: skip `prepare` when its output already
 exists, because it refuses to overwrite that directory. Every `train` invocation
-creates a new run directory. Repeating `evaluate` for the same checkpoint replaces
-its generated files in `test/`.
+creates a new run directory. Repeating `evaluate` for the same checkpoint and split
+replaces its generated files in that split's directory and keeps unrelated files.
+An evaluation directory recorded for a model with different output tasks is rejected;
+use a separate `--output-dir` for that model.
 
 ## Check the installation and shared code
 

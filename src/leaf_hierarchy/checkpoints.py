@@ -115,6 +115,8 @@ def load_checkpoint(path: Path, device):
             raise ValueError("Checkpoint and experiment preprocessing specifications disagree.")
         state = checkpoint["model_state_dict"]
     checkpoint["format_version"] = version
+    from .consistency import saved_consistency_weight
+    saved_consistency_weight(checkpoint["config"], spec["tasks"])
     model = create_model(spec, mappings, pretrained=False)
     model.load_state_dict(state, strict=True)
     model.to(device)

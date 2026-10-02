@@ -1,5 +1,5 @@
-# Match the species baseline protocol and reuse its prepared manifest.
-experiment = "resnet18_multitask"
+# Multitask classification with adjacent-level Jensen-Shannon consistency.
+experiment = "resnet18_consistency"
 
 [data]
 data_dir = "PlantCLEF2015TrainingData"
@@ -13,9 +13,11 @@ weights = "imagenet"
 [training]
 epochs = 5
 batch_size = 16
-seed = 20261001
+seed = 20260924
 lr = 0.0001
 weight_decay = 0.0001
+# Starting value; select experimental settings using validation.
+consistency_weight = 1.0
 
 [runtime]
 device = "auto"

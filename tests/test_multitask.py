@@ -14,6 +14,7 @@ from leaf_hierarchy.checkpoints import load_checkpoint
 from leaf_hierarchy.config import load_config
 from leaf_hierarchy.data import make_loader, load_manifest
 from leaf_hierarchy.engine import evaluate_loader, task_loss
+from leaf_hierarchy.hierarchy import METHODS
 from leaf_hierarchy.models import create_model, validate_model_spec
 from leaf_hierarchy.runtime import ROOT, configure_runtime
 
@@ -69,9 +70,19 @@ class MultitaskTests(unittest.TestCase):
     def test_experiment_matches_baseline_comparison_settings(self):
         baseline = load_config(ROOT / "experiments/resnet18_species/config.toml")
         multitask = load_config(ROOT / "experiments/resnet18_multitask/config.toml")
-        for key in ("data", "training", "runtime", "selection", "preprocessing", "augmentation"):
+        regularized = load_config(ROOT / "experiments/resnet18_consistency/config.toml")
+        for key in ("data", "runtime", "selection", "preprocessing", "augmentation"):
             self.assertEqual(baseline[key], multitask[key])
+            self.assertEqual(multitask[key], regularized[key])
+        # Seeds are per-run choices and can differ in the user's editable configurations.
+        for key, value in baseline["training"].items():
+            if key != "seed":
+                self.assertEqual(value, multitask["training"][key])
+            if key not in ("seed", "consistency_weight"):
+                self.assertEqual(value, regularized["training"][key])
         self.assertEqual(multitask["model"]["tasks"], TASKS)
+        self.assertEqual(regularized["model"], multitask["model"])
+        self.assertEqual(regularized["training"]["consistency_weight"], 1.0)
 
     def test_metrics_and_losses_are_independent_with_uneven_batches(self):
         class Predictions(nn.Module):
@@ -106,20 +117,25 @@ class MultitaskTests(unittest.TestCase):
                                     "class_id": str(index), "observation_id": name, "group_id": name, "split": split})
             manifest = root / "split.csv"
             pd.DataFrame(records).to_csv(manifest, index=False)
-            for tasks in (["species"], TASKS):
-                with self.subTest(tasks=tasks):
+            multitask_runs = []
+            for tasks, consistency_weight in ((["species"], 0.0), (TASKS, 0.0), (TASKS, 0.4)):
+                with self.subTest(tasks=tasks, consistency_weight=consistency_weight):
                     config_file = root / "config.toml"
                     config_file.write_text(
                         f'[model]\ntasks = {json.dumps(tasks)}\nweights = "none"\n'
-                        '[training]\nepochs = 2\nbatch_size = 4\n'
+                        f'[training]\nepochs = 2\nbatch_size = 4\nconsistency_weight = {consistency_weight}\n'
                         '[preprocessing]\nresize_size = 64\ncrop_size = 64\n'
                         '[runtime]\ndevice = "cpu"\nnum_threads = 2\n', encoding="utf-8")
-                    output = root / f"runs_{len(tasks)}"
+                    output = root / f"runs_{len(tasks)}_{consistency_weight}"
                     training.main(["--config", str(config_file), "--data-dir", str(root),
                                    "--split-file", str(manifest), "--output-dir", str(output)])
                     run = next(output.iterdir())
                     self.assertFalse((run / "test").exists())
+                    training_metrics = json.loads((run / "validation/validation_metrics.json").read_text())
+                    self.assertNotIn("methods", training_metrics)
+                    self.assertFalse((run / "validation/comparison_metrics.json").exists())
                     model, checkpoint = load_checkpoint(run / "best.pt", torch.device("cpu"))
+                    self.assertEqual(checkpoint["config"]["training"]["consistency_weight"], consistency_weight)
                     history = pd.read_csv(run / "history.csv")
                     best = history.sort_values(["val_species_macro_f1", "val_loss"],
                                                ascending=[False, True], kind="stable").iloc[0]
@@ -128,15 +144,81 @@ class MultitaskTests(unittest.TestCase):
                     loader = make_loader(frame, "validation", root, 4, class_mappings=MAPPINGS,
                                          tasks=tasks, preprocessing=checkpoint["preprocessing"])
                     restored = evaluate_loader(model, loader, torch.device("cpu"), tasks=tasks,
-                                               class_mappings=MAPPINGS)
-                    evaluation.main(["--checkpoint", str(run / "best.pt"), "--device", "cpu", "--num-threads", "2"])
+                                               class_mappings=MAPPINGS, taxonomy=checkpoint["taxonomy"],
+                                               consistency_weight=consistency_weight)
+                    evaluate_args = ["--checkpoint", str(run / "best.pt"), "--device", "cpu", "--num-threads", "2"]
+                    if len(tasks) == 3:
+                        # A runtime/data TOML must not replace the checkpoint's trained objective.
+                        runtime_config = root / "evaluate.toml"
+                        runtime_config.write_text(f'[model]\ntasks = {json.dumps(tasks)}\n'
+                                                  '[training]\nconsistency_weight = 0.9\n', encoding="utf-8")
+                        evaluate_args += ["--config", str(runtime_config), "--data-dir", str(root),
+                                          "--split-file", str(manifest)]
+                    # Validation must not load any training/test image or create test results.
+                    original_open = Image.open
+                    opened_images = []
+
+                    def validation_images_only(path, *args, **kwargs):
+                        self.assertTrue(Path(path).name.endswith("_validation.png"), str(path))
+                        opened_images.append(Path(path).name)
+                        return original_open(path, *args, **kwargs)
+
+                    with patch("PIL.Image.open", side_effect=validation_images_only):
+                        evaluation.main(evaluate_args + ["--split", "validation"])
+                    self.assertEqual(len(opened_images), 4)
+                    self.assertFalse((run / "test").exists())
+                    evaluation.main(evaluate_args)
+                    if len(tasks) == 3:
+                        # Re-evaluation must replace the same results without directory errors.
+                        evaluation.main(evaluate_args)
+                        multitask_runs.append(run)
                     for split in ("validation", "test"):
                         combined = json.loads((run / split / f"{split}_metrics.json").read_text())
                         self.assertEqual(combined["selected_epoch"], checkpoint["epoch"])
                         self.assertEqual(set(combined["tasks"]), set(tasks))
+                        metadata = json.loads((run / split / "evaluation_config.json").read_text())
+                        self.assertEqual(metadata["split"], split)
+                        if split == "validation":
+                            for key, value in training_metrics.items():
+                                self.assertEqual(combined[key], value)
                         predictions = pd.read_csv(run / split / f"{split}_predictions.csv")
                         self.assertEqual(predictions["image_path"].tolist(),
                                          frame.loc[frame["split"] == split, "image_path"].tolist())
+                        if len(tasks) == 3:
+                            compared = json.loads((run / split / "comparison_metrics.json").read_text())
+                            self.assertEqual(combined["methods"], compared)
+                            self.assertEqual(set(compared), set(METHODS))
+                            summary = pd.read_csv(run / split / "summary.csv")
+                            self.assertEqual(len(summary), 9)
+                            self.assertEqual(set(summary.method), set(METHODS))
+                            self.assertEqual(set(summary.split), {split})
+                            for method in METHODS:
+                                method_dir = run / split / method
+                                self.assertEqual(json.loads((method_dir / "metrics.json").read_text()), compared[method])
+                                for task in tasks:
+                                    matrix = pd.read_csv(method_dir / f"{task}_confusion_matrix.csv", index_col=0)
+                                    self.assertEqual(matrix.values.sum(), 4)
+                                    self.assertTrue((method_dir / f"{task}_classification_report.csv").is_file())
+                                    self.assertEqual(compared["independent"]["tasks"][task]["accuracy"],
+                                                     combined["tasks"][task]["accuracy"])
+                                    self.assertEqual(compared["independent"]["tasks"][task]["macro_f1"],
+                                                     combined["tasks"][task]["macro_f1"])
+                            self.assertEqual(combined[f"{split}_consistency_weight"], consistency_weight)
+                            self.assertAlmostEqual(combined[f"{split}_weighted_consistency_loss"],
+                                                   consistency_weight * combined[f"{split}_consistency_loss"], places=6)
+                            self.assertAlmostEqual(combined[f"{split}_loss"],
+                                                   combined[f"{split}_classification_loss"]
+                                                   + combined[f"{split}_weighted_consistency_loss"], places=6)
+                            self.assertAlmostEqual(combined["hierarchy"]["coherence_rate"], predictions.valid_path.mean())
+                            self.assertEqual(combined["hierarchy"]["invalid_paths"], int((~predictions.valid_path).sum()))
+                            if split == "validation":
+                                self.assertAlmostEqual(combined[f"{split}_loss"], restored["loss"])
+                                self.assertAlmostEqual(combined[f"{split}_consistency_loss"], restored["consistency_loss"])
+                                self.assertAlmostEqual(best.val_coherence_rate, combined["hierarchy"]["coherence_rate"])
+                        else:
+                            self.assertNotIn("methods", combined)
+                            self.assertFalse((run / split / "comparison_metrics.json").exists())
+                            self.assertFalse((run / split / "joint_path").exists())
                         for task in tasks:
                             metrics = json.loads((run / split / f"{split}_{task}_metrics.json").read_text())
                             for metric in ("accuracy", "macro_f1", "loss", "num_classes"):
@@ -155,8 +237,12 @@ class MultitaskTests(unittest.TestCase):
                     self.assertEqual(set(json.loads(output_json.getvalue())["predictions"]), set(tasks))
                     if len(tasks) == 3:
                         from leaf_hierarchy.hierarchy import decode_logits
+                        np.testing.assert_allclose(history.train_loss, history.train_classification_loss
+                                                   + history.train_weighted_consistency_loss, rtol=1e-6)
+                        np.testing.assert_allclose(history.val_loss, history.val_classification_loss
+                                                   + history.val_weighted_consistency_loss, rtol=1e-6)
                         for split in ("validation", "test"):
-                            comparison_dir = root / f"hierarchy_{split}"
+                            comparison_dir = root / f"hierarchy_{consistency_weight}_{split}"
                             command = ["--checkpoint", str(run / "best.pt"), "--output-dir", str(comparison_dir),
                                        "--device", "cpu", "--num-threads", "2"]
                             if split == "test":
@@ -167,6 +253,10 @@ class MultitaskTests(unittest.TestCase):
                             self.assertEqual(status["split"], split)
                             details = next(p for p in comparison_dir.iterdir() if p.is_dir())
                             actual = pd.read_csv(details / "predictions.csv")
+                            automatic = pd.read_csv(run / split / "comparison_predictions.csv")
+                            pd.testing.assert_frame_equal(actual, automatic)
+                            self.assertEqual(json.loads((details / "metrics.json").read_text()),
+                                             json.loads((run / split / "comparison_metrics.json").read_text()))
                             original = pd.read_csv(run / split / f"{split}_predictions.csv")
                             self.assertEqual(actual["image_path"].tolist(), original["image_path"].tolist())
                             for task in tasks:
@@ -174,12 +264,59 @@ class MultitaskTests(unittest.TestCase):
                             self.assertTrue(actual["species_path_valid_path"].all())
                             self.assertTrue(actual["joint_path_valid_path"].all())
                             with np.load(details / "scores.npz", allow_pickle=False) as scores:
+                                with np.load(run / split / "scores.npz", allow_pickle=False) as automatic_scores:
+                                    self.assertEqual(set(scores.files), set(automatic_scores.files))
+                                    for key in scores.files:
+                                        np.testing.assert_array_equal(scores[key], automatic_scores[key])
                                 decoded, _ = decode_logits({t: scores[f"logits_{t}"] for t in tasks}, checkpoint["taxonomy"])
                                 for task in tasks:
                                     names = scores[f"classes_{task}"]
                                     self.assertEqual(names[decoded["joint_path"][task]].tolist(), actual[f"joint_path_{task}"].tolist())
                             with self.assertRaises(FileExistsError):
                                 hierarchy_evaluation.main(command)
+                        if consistency_weight == 0:
+                            # Reproduce a pre-consistency format-2 checkpoint with no new fields.
+                            legacy = torch.load(run / "best.pt", weights_only=True)
+                            del legacy["config"]["training"]["consistency_weight"]
+                            del legacy["config"]["loss"]["consistency"]
+                            old_checkpoint = run / "old.pt"
+                            torch.save(legacy, old_checkpoint)
+                            legacy_dir = root / "legacy_evaluation"
+                            evaluation.main(["--checkpoint", str(old_checkpoint), "--output-dir", str(legacy_dir),
+                                             "--config", str(runtime_config), "--data-dir", str(root),
+                                             "--split-file", str(manifest), "--device", "cpu", "--num-threads", "2"])
+                            old_metrics = json.loads((legacy_dir / "test_metrics.json").read_text())
+                            self.assertEqual(old_metrics["test_consistency_weight"], 0.)
+                            original_metrics = json.loads((run / "test/test_metrics.json").read_text())
+                            self.assertEqual(old_metrics, original_metrics)
+            # Keep the legacy command's multi-checkpoint comparison and aggregation contract.
+            aggregate_dir = root / "hierarchy_multiple"
+            multiple_args = ["--checkpoint", *(str(run / "best.pt") for run in multitask_runs),
+                             "--output-dir", str(aggregate_dir), "--device", "cpu", "--num-threads", "2"]
+            hierarchy_evaluation.main(multiple_args)
+            aggregate = pd.read_csv(aggregate_dir / "aggregate.csv")
+            self.assertEqual(len(aggregate), 9)
+            self.assertTrue((aggregate.num_runs == 2).all())
+            summary = pd.read_csv(aggregate_dir / "summary.csv")
+            self.assertEqual(len(summary), 18)
+            for _, row in aggregate.iterrows():
+                accuracies = [json.loads((run / "validation/comparison_metrics.json").read_text())
+                              [row.method]["tasks"][row.task]["accuracy"] for run in multitask_runs]
+                self.assertAlmostEqual(row.accuracy_mean, np.mean(accuracies))
+                self.assertAlmostEqual(row.accuracy_sd, np.std(accuracies, ddof=1))
+
+            def incompatible_checkpoint(path, device):
+                model, checkpoint = load_checkpoint(path, device)
+                if Path(path).parent == multitask_runs[1]:
+                    checkpoint["preprocessing"] = {**checkpoint["preprocessing"], "crop_size": 32}
+                return model, checkpoint
+
+            rejected_args = ["--checkpoint", *(str(run / "best.pt") for run in multitask_runs),
+                             "--output-dir", str(root / "incompatible_comparison"),
+                             "--device", "cpu", "--num-threads", "2"]
+            with patch.object(hierarchy_evaluation, "load_checkpoint", side_effect=incompatible_checkpoint):
+                with self.assertRaisesRegex(ValueError, "share.*preprocessing"):
+                    hierarchy_evaluation.main(rejected_args)
 
 
 if __name__ == "__main__":

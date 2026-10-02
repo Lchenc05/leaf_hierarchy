@@ -12,8 +12,9 @@ from pathlib import Path
 
 from .checkpoints import save_checkpoint
 from .config import add_common_arguments, apply_overrides, load_config
+from .consistency import HierarchicalConsistencyLoss, loss_metadata
 from .data import build_taxonomy, load_manifest, make_loader, split_fingerprint
-from .engine import evaluate_loader, task_loss
+from .engine import evaluate_loader, loss_components
 from .models import create_model
 from .reporting import save_evaluation_results
 from .runtime import ROOT, SPLITS, configure_runtime, select_device, write_json
@@ -35,6 +36,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--weights", choices=("imagenet", "none"), default=None,
                         help="none permits an offline smoke test and changes the experiment.")
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--consistency-weight", type=float, default=None,
+                        help="Nonnegative hierarchical consistency weight; positive values require multitask heads.")
     return parser.parse_args(argv)
 
 
@@ -70,6 +73,8 @@ def main(argv: list[str] | None = None) -> None:
         raise ValueError("Dataset taxonomy and manifest class ordering disagree.")
     spec = {key: config["model"][key] for key in ("architecture", "tasks")}
     tasks = spec["tasks"]
+    consistency_weight = settings["consistency_weight"]
+    consistency = HierarchicalConsistencyLoss(taxonomy).to(device) if len(tasks) == 3 else None
     loaders = {
         split: make_loader(data, split, data_dir, settings["batch_size"], settings["seed"],
                            class_mappings=mappings, tasks=tasks, preprocessing=config["preprocessing"],
@@ -92,8 +97,7 @@ def main(argv: list[str] | None = None) -> None:
         "split_sizes": {split: int(data["split"].eq(split).sum()) for split in SPLITS},
         "class_mappings": mappings, "run_dir": str(run_dir), "source": source_provenance(),
         "selection_tie_breaker": "lower_validation_loss",
-        "loss": {"name": "cross_entropy", "reduction": "sum_of_task_means",
-                 "weights": {task: 1.0 for task in tasks}},
+        "loss": loss_metadata(tasks, consistency_weight),
         "versions": {
             "python": platform.python_version(), "torch": str(torch.__version__),
             "torchvision": str(torchvision.__version__),
@@ -108,6 +112,8 @@ def main(argv: list[str] | None = None) -> None:
     print(f"Device: {device}\nRun directory: {run_dir}", flush=True)
     print(f"{len(species_mapping)} species | train: {len(loaders['train'].dataset)} images | "
           f"validation: {len(loaders['validation'].dataset)} images", flush=True)
+    if consistency is not None:
+        print(f"Hierarchical consistency weight: {consistency_weight:g}", flush=True)
 
     best_score = (-1.0, float("-inf"))
     history = []
@@ -115,39 +121,62 @@ def main(argv: list[str] | None = None) -> None:
     for epoch in range(1, settings["epochs"] + 1):
         model.train()
         train_loss = 0.0
+        component_sums = {key: 0.0 for key in ("classification_loss", "consistency_loss", "weighted_consistency_loss")}
         for batch, (images, targets) in enumerate(loaders["train"], 1):
             images = images.to(device)
             targets = {task: labels.to(device) for task, labels in targets.items()}
             optimizer.zero_grad(set_to_none=True)
             outputs = model(images)
-            loss = task_loss(outputs, targets, tasks)
+            components = loss_components(outputs, targets, tasks, consistency=consistency,
+                                         consistency_weight=consistency_weight)
+            loss = components["loss"]
             loss.backward()
             optimizer.step()
             train_loss += loss.item() * len(images)
+            for key in component_sums:
+                component_sums[key] += components[key].item() * len(images)
             if batch % 50 == 0:
                 print(f"Epoch {epoch}/{settings['epochs']}, batch {batch}/{len(loaders['train'])}", flush=True)
 
         # Test images never participate in parameter updates or checkpoint selection.
-        validation = evaluate_loader(model, loaders["validation"], device, tasks=tasks, class_mappings=mappings)
+        validation = evaluate_loader(model, loaders["validation"], device, tasks=tasks, class_mappings=mappings,
+                                     taxonomy=taxonomy, consistency_weight=consistency_weight)
         val_loss = validation["loss"]
         selected_metric = validation["tasks"][selection["task"]][selection["metric"]]
         if (selected_metric, -val_loss) > best_score:
             best_score = (selected_metric, -val_loss)
+            selected_metrics = {"validation_loss": val_loss, "validation": validation["tasks"],
+                                "validation_classification_loss": validation["classification_loss"]}
+            if consistency is not None:
+                selected_metrics.update({f"validation_{key}": validation[key]
+                                         for key in ("consistency_loss", "weighted_consistency_loss", "hierarchy")})
             save_checkpoint(run_dir / "best.pt", model, config=config, taxonomy=taxonomy, epoch=epoch,
-                            metrics={"validation_loss": val_loss, "validation": validation["tasks"]})
+                            metrics=selected_metrics)
             save_evaluation_results(
                 run_dir / "validation", split="validation", result=validation,
                 frame=loaders["validation"].dataset.frame, class_mappings=mappings, selected_epoch=epoch,
             )
         row = {"epoch": epoch, "train_loss": train_loss / len(loaders["train"].dataset), "val_loss": val_loss}
+        row.update(train_classification_loss=component_sums["classification_loss"] / len(loaders["train"].dataset),
+                   val_classification_loss=validation["classification_loss"])
+        if consistency is not None:
+            for key in ("consistency_loss", "weighted_consistency_loss"):
+                row[f"train_{key}"] = component_sums[key] / len(loaders["train"].dataset)
+                row[f"val_{key}"] = validation[key]
+            row.update(val_coherence_rate=validation["hierarchy"]["coherence_rate"],
+                       val_invalid_paths=validation["hierarchy"]["invalid_paths"])
         for task, metrics in validation["tasks"].items():
             row.update({f"val_{task}_{key}": value for key, value in metrics.items() if key != "num_classes"})
         history.append(row)
         pd.DataFrame(history).to_csv(run_dir / "history.csv", index=False, encoding="utf-8")
         print(f"Epoch {epoch}/{settings['epochs']} | train loss: {row['train_loss']:.4f} | "
               f"validation loss: {val_loss:.4f} | {selection['task']} {selection['metric']}: {selected_metric:.4f}", flush=True)
+        if consistency is not None:
+            print(f"  Validation CE: {validation['classification_loss']:.4f} | "
+                  f"consistency: {validation['consistency_loss']:.4f} | "
+                  f"independent coherence: {validation['hierarchy']['coherence_rate']:.4f}", flush=True)
     print(f"Checkpoint: {run_dir / 'best.pt'}", flush=True)
-    print("Training completed. Evaluate this checkpoint on the held-out test set.", flush=True)
+    print("Training completed. Use evaluate --checkpoint PATH --split validation or --split test.", flush=True)
 
 
 if __name__ == "__main__":

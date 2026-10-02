@@ -10,8 +10,16 @@ This experiment compares **three inference methods on each saved multitask
 checkpoint**. `independent` is the original multitask prediction, not the separate
 species-only ResNet18 model. The comparison reuses the saved model parameters.
 
-The comparison is available through `compare-hierarchy`. The `evaluate` and
-`predict` commands use independent output heads.
+`evaluate` automatically runs all three methods for a saved multitask checkpoint.
+`compare-hierarchy` remains available for comparisons across several checkpoints
+and separate analysis directories. `predict` uses independent output heads.
+
+The same command accepts checkpoints from the
+[consistency training experiment](../resnet18_consistency/README.md). Its training
+penalty changes the learned parameters; the three decoding rules below remain
+unchanged. Comparing a saved checkpoint does not retrain it. Consistency
+regularization encourages agreement between probability distributions but does
+not guarantee that the independent predicted labels form a valid path.
 
 ## Fixed protocol
 
@@ -58,13 +66,24 @@ checkpoint must contain family, genus and species heads and their taxonomy.
 From the repository root, with the environment activated:
 
 ```text
-leaf-hierarchy compare-hierarchy --checkpoint CHECKPOINT --split validation
-leaf-hierarchy compare-hierarchy --checkpoint CHECKPOINT --split test
+leaf-hierarchy evaluate --checkpoint CHECKPOINT --split validation
+leaf-hierarchy evaluate --checkpoint CHECKPOINT --split test
 ```
 
 Replace `CHECKPOINT` with the path to a multitask `best.pt`, absolute or relative
-to the current directory. Quote paths containing spaces. Validation is the default
-split. You can compare multiple checkpoints in one invocation:
+to the current directory. Quote paths containing spaces. `evaluate` defaults to
+test when `--split` is omitted and saves outputs beside the checkpoint. No method
+option is needed. It also accepts species-only models, for which it performs the
+usual independent species evaluation.
+
+Training still uses independent validation metrics to select `best.pt`; it does
+not run the three-method comparison at every epoch. Run `evaluate --split validation`
+after training to compare the methods on the selected checkpoint. Choose any
+experimental settings using validation, then evaluate the fixed protocol on test.
+
+To compare multiple multitask checkpoints in one invocation, use the existing
+`compare-hierarchy` command. It defaults to validation and writes a separate
+analysis directory:
 
 ```text
 leaf-hierarchy compare-hierarchy --checkpoint CHECKPOINT_SEED_1 CHECKPOINT_SEED_2 CHECKPOINT_SEED_3 --split validation
@@ -91,7 +110,38 @@ The architecture, taxonomy and preprocessing come from the checkpoint.
 
 ## Outputs and interpretation
 
-Each command creates a new directory under `results/analysis/hierarchy/`.
+For a single checkpoint, `evaluate` writes the selected split beside the model:
+
+```text
+RUN/
+  best.pt
+  validation/ or test/
+    evaluation_config.json        # Checkpoint identity, split, methods and runtime.
+    SPLIT_metrics.json            # Independent metrics/losses plus all method metrics.
+    SPLIT_TASK_metrics.json       # Original independent measurements for F/G/S.
+    SPLIT_predictions.csv         # Original independent labels and consistency flags.
+    SPLIT_TASK_classification_report.csv
+    SPLIT_TASK_confusion_matrix.csv
+    comparison_metrics.json       # All three methods, coherence and changed/fixed/harmed counts.
+    comparison_predictions.csv    # True labels, each method's labels and consistency flags.
+    summary.csv                   # Method and taxonomic-level results for this checkpoint.
+    taxonomy.json
+    scores.npz                    # Logits, log-softmax scores, class names and image IDs.
+    independent/                  # metrics.json, reports and confusion matrices for F/G/S.
+    species_path/
+    joint_path/
+```
+
+Here `SPLIT` is `validation` or `test`, and `TASK` is `family`, `genus` or `species`.
+The `tasks` and loss fields in `SPLIT_metrics.json` still describe independent
+predictions; its `methods` object contains the three-method comparison.
+Cross-entropy and consistency losses are evaluated once on the model outputs.
+Repeating `evaluate` replaces the generated files for that split, preserving
+unrelated files. Training alone writes independent validation results; the method
+directories appear when `evaluate` is run.
+
+The separate `compare-hierarchy` command creates a new directory under
+`results/analysis/hierarchy/`.
 `--output-dir PATH` can name a new output directory. Existing output directories
 are rejected so a previous comparison and the original `test/` results stay intact.
 `comparison_config.json` is marked `complete` only after all checkpoints finish;
@@ -108,14 +158,15 @@ COMPARISON/
     scores.npz            # Logits, log-softmax scores, class names and ordered image IDs.
     predictions.csv       # True labels, each method's labels and consistency flags.
     metrics.json
-    independent/          # Classification reports and confusion matrices for F/G/S.
+    independent/          # Metrics, classification reports and confusion matrices for F/G/S.
     species_path/
     joint_path/
 ```
 
 Scores in `scores.npz` can be read with `numpy.load(..., allow_pickle=False)`.
 The arrays contain the original logits, log-probabilities, class names and true
-labels. Their per-image order matches `predictions.csv`.
+labels. Their per-image order matches `comparison_predictions.csv` for `evaluate`
+or `predictions.csv` for `compare-hierarchy`.
 
 - **Coherence rate**: fraction of predicted triplets whose species belongs to the
   predicted genus and whose genus belongs to the predicted family.
@@ -136,8 +187,8 @@ the fixed/harmed counts. Species-derived decoding cannot improve species accurac
 When the independent argmax triplet is already valid, the equal-weight joint rule
 keeps its optimal path (apart from score ties).
 
-`aggregate.csv` reports sample standard deviations (`ddof=1`); with only one
-checkpoint the SD cell is empty. These are repetitions on the same held-out images,
+The `compare-hierarchy` export `aggregate.csv` reports sample standard deviations
+(`ddof=1`); with only one checkpoint the SD cell is empty. These are repetitions on the same held-out images,
 not additional independent test samples.
 
 ## Initial measured comparison (26 September 2026)
